@@ -15,11 +15,38 @@ async def healthcheck(request):
     return web.Response(text="OK")
 
 def run_health_server():
-    app = web.Application()
-    app.router.add_get("/", healthcheck)
-    web.run_app(app, port=8080)
+    """Запуск health check сервера в отдельном потоке"""
+    async def init_app():
+        app = web.Application()
+        app.router.add_get("/", healthcheck)
+        app.router.add_get("/health", healthcheck)
+        return app
+    
+    async def run_server():
+        app = await init_app()
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, '0.0.0.0', 8080)
+        await site.start()
+        print("Health check server started on port 8080")
+        # Держим сервер запущенным
+        try:
+            while True:
+                await asyncio.sleep(3600)
+        except asyncio.CancelledError:
+            pass
+    
+    # Создаём новый event loop для этого потока
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(run_server())
+    except KeyboardInterrupt:
+        pass
+    finally:
+        loop.close()
 
-# Запускаем сервер-заглушку
+# Запускаем сервер-заглушку для health checks
 threading.Thread(target=run_health_server, daemon=True).start()
 
 
