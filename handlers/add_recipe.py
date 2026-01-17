@@ -2,6 +2,7 @@ from aiogram import Router, F
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from typing import Annotated
 from keyboards import (
     get_main_menu, get_skip_button, get_cancel_button, 
     get_back_to_menu_button, get_confirm_buttons
@@ -29,7 +30,11 @@ async def cmd_add_recipe(message: Message, state: FSMContext):
 
 
 @router.message(AddRecipeStates.waiting_for_recipe_id)
-async def process_recipe_id_add(message: Message, state: FSMContext):
+async def process_recipe_id_add(
+    message: Message, 
+    state: FSMContext,
+    db_pool: Annotated[asyncpg.Pool, "db_pool"]
+):
     """Обработка введённого ID рецепта для добавления"""
     if message.text == "❌ Отмена" or message.text == "🔙 В меню":
         await state.clear()
@@ -45,8 +50,8 @@ async def process_recipe_id_add(message: Message, state: FSMContext):
         await message.answer("⚠️ Пожалуйста, введите корректный ID рецепта:")
         return
 
-    # Получаем pool из bot data
-    pool: asyncpg.Pool = message.bot["db_pool"]
+    # Получаем pool из middleware data
+    pool = db_pool
 
     # Проверяем, не существует ли уже такой рецепт
     if await is_duplicate(recipe_id, pool):
@@ -101,7 +106,11 @@ async def process_comment(message: Message, state: FSMContext):
 
 
 @router.message(AddRecipeStates.waiting_for_confirmation)
-async def process_confirmation(message: Message, state: FSMContext):
+async def process_confirmation(
+    message: Message, 
+    state: FSMContext,
+    db_pool: Annotated[asyncpg.Pool, "db_pool"]
+):
     """Обработка подтверждения сохранения"""
     if message.text == "🔙 В меню" or message.text == "❌ Отменить":
         await state.clear()
@@ -117,8 +126,8 @@ async def process_confirmation(message: Message, state: FSMContext):
         comment = data.get('comment')
         user_id = message.from_user.id
 
-        # Получаем pool из bot data
-        pool: asyncpg.Pool = message.bot.get("db_pool")
+        # Получаем pool из middleware data
+        pool = db_pool
 
         try:
             # Сохраняем рецепт в базу

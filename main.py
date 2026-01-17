@@ -6,6 +6,7 @@ from config import BOT_TOKEN
 from database import db
 from handlers import common, check_recipe, add_recipe, recipe_history
 from middlewares.logging import LoggingMiddleware
+from middlewares.database import DatabaseMiddleware
 
 # Настройка логирования
 logging.basicConfig(
@@ -26,10 +27,10 @@ async def main():
     pool = await db.connect()
     logger.info("База данных подключена")
 
-    # Сохраняем pool в bot data для доступа из handlers
-    bot["db_pool"] = pool
-
-    # Подключение middleware для логирования
+    # Подключение middleware
+    # DatabaseMiddleware должен быть первым, чтобы pool был доступен в других middleware
+    dp.message.middleware(DatabaseMiddleware(pool))
+    dp.callback_query.middleware(DatabaseMiddleware(pool))
     dp.message.middleware(LoggingMiddleware())
     dp.callback_query.middleware(LoggingMiddleware())
 
