@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  bot:
+    build: .
+    container_name: apteka-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - DATABASE_URL=${DATABASE_URL}
+    volumes:
+      # Опционально: монтируем код для разработки (раскомментируйте если нужно)
+      # - .:/app
+      # Логи можно сохранять в отдельную директорию
+      - ./logs:/app/logs
+    networks:
+      - bot-network
+
+networks:
+  bot-network:
+    driver: bridge
