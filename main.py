@@ -9,45 +9,42 @@ from middlewares.logging import LoggingMiddleware
 from middlewares.database import DatabaseMiddleware
 
 import threading
-from aiohttp import web
+import sys
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from socketserver import TCPServer
 
-async def healthcheck(request):
-    return web.Response(text="OK")
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    """Простой HTTP handler для health checks"""
+    def do_GET(self):
+        if self.path in ('/', '/health'):
+            self.send_response(200)
+            self.send_header('Content-type', 'text/plain')
+            self.end_headers()
+            self.wfile.write(b'OK')
+        else:
+            self.send_response(404)
+            self.end_headers()
+    
+    def log_message(self, format, *args):
+        # Отключаем логирование HTTP запросов
+        pass
 
 def run_health_server():
-    """Запуск health check сервера в отдельном потоке"""
-    async def init_app():
-        app = web.Application()
-        app.router.add_get("/", healthcheck)
-        app.router.add_get("/health", healthcheck)
-        return app
-    
-    async def run_server():
-        app = await init_app()
-        runner = web.AppRunner(app)
-        await runner.setup()
-        site = web.TCPSite(runner, '0.0.0.0', 8080)
-        await site.start()
-        print("Health check server started on port 8080")
-        # Держим сервер запущенным
-        try:
-            while True:
-                await asyncio.sleep(3600)
-        except asyncio.CancelledError:
-            pass
-    
-    # Создаём новый event loop для этого потока
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    """Запуск простого HTTP сервера для health checks"""
     try:
-        loop.run_until_complete(run_server())
-    except KeyboardInterrupt:
-        pass
-    finally:
-        loop.close()
+        # Используем TCPServer с reuse_address=True
+        server = TCPServer(("0.0.0.0", 8080), HealthCheckHandler, bind_and_activate=False)
+        server.allow_reuse_address = True
+        server.server_bind()
+        server.server_activate()
+        server.serve_forever()
+    except Exception as e:
+        print(f"Health server error: {e}", file=sys.stderr)
+        # Не падаем, просто не работаем health checks
 
-# Запускаем сервер-заглушку для health checks
-threading.Thread(target=run_health_server, daemon=True).start()
+# Запускаем health server в отдельном потоке
+health_thread = threading.Thread(target=run_health_server, daemon=True, name="HealthServer")
+health_thread.start()
 
 
 # Настройка логирования
@@ -86,10 +83,20 @@ async def main():
     logger.info("Бот запущен")
     try:
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+    except Exception as e:
+        logger.error(f"Ошибка при работе бота: {e}", exc_info=True)
+        raise
     finally:
+        logger.info("Завершение работы бота...")
         await db.disconnect()
         await bot.session.close()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Получен сигнал прерывания, завершаем работу...")
+    except Exception as e:
+        logger.error(f"Критическая ошибка: {e}", exc_info=True)
+        sys.exit(1)
