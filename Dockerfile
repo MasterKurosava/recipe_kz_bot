@@ -19,5 +19,7 @@ COPY . .
 RUN useradd -m -u 1000 botuser && chown -R botuser:botuser /app
 USER botuser
 
+EXPOSE 8080
+
 # Запускаем бота
 CMD ["python", "main.py"]
