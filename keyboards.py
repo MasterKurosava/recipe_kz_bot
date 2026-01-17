@@ -2,7 +2,6 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
 
 def get_main_menu() -> ReplyKeyboardMarkup:
-    """Главное меню с основными функциями"""
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="🔍 Проверить рецепт")],
@@ -16,7 +15,6 @@ def get_main_menu() -> ReplyKeyboardMarkup:
 
 
 def get_back_to_menu_button() -> ReplyKeyboardMarkup:
-    """Кнопка для возврата в главное меню"""
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="🔙 В меню")]
@@ -28,7 +26,6 @@ def get_back_to_menu_button() -> ReplyKeyboardMarkup:
 
 
 def get_cancel_button() -> ReplyKeyboardMarkup:
-    """Кнопка для отмены действия (завершает FSM)"""
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="❌ Отмена")]
@@ -40,7 +37,6 @@ def get_cancel_button() -> ReplyKeyboardMarkup:
 
 
 def get_skip_button() -> ReplyKeyboardMarkup:
-    """Кнопка для пропуска комментария"""
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="⏭️ Пропустить комментарий")],
@@ -53,7 +49,6 @@ def get_skip_button() -> ReplyKeyboardMarkup:
 
 
 def get_confirm_buttons() -> ReplyKeyboardMarkup:
-    """Кнопки подтверждения сохранения рецепта"""
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
             [

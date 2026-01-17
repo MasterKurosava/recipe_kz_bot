@@ -3,10 +3,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Telegram Bot Token
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-# Database connection string for Neon DB (PostgreSQL)
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 if not BOT_TOKEN:

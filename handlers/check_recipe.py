@@ -16,10 +16,11 @@ class CheckRecipeStates(StatesGroup):
 
 @router.message(F.text == "🔍 Проверить рецепт")
 async def cmd_check_recipe(message: Message, state: FSMContext):
-    """Начало проверки рецепта"""
     await message.answer(
-        "🔍 Введите ID рецепта для проверки:",
-        reply_markup=get_cancel_button()
+        "🔍 <b>Проверка рецепта</b>\n\n"
+        "📝 Введите ID рецепта для проверки:",
+        reply_markup=get_cancel_button(),
+        parse_mode="HTML"
     )
     await state.set_state(CheckRecipeStates.waiting_for_recipe_id)
 
@@ -30,7 +31,6 @@ async def process_recipe_id_check(
     state: FSMContext,
     db_pool: Annotated[asyncpg.Pool, "db_pool"]
 ):
-    """Обработка введённого ID рецепта для проверки"""
     if message.text == "❌ Отмена" or message.text == "🔙 В меню":
         await state.clear()
         await message.answer(
@@ -45,32 +45,41 @@ async def process_recipe_id_check(
         await message.answer("⚠️ Пожалуйста, введите корректный ID рецепта:")
         return
 
-    # Получаем pool из middleware data
     pool = db_pool
     
-    # Проверяем рецепт в базе
     recipe = await get_recipe(recipe_id, pool)
 
     if recipe:
-        # Рецепт найден - выдача запрещена
         created_at = recipe['created_at']
         comment = recipe['comment'] if recipe['comment'] else "Нет комментария"
-        user_id = recipe['user_id']
+        username = recipe.get('username')
+        user_display = f"@{username}" if username else f"ID: {recipe['user_id']}"
         
-        date_str = created_at.strftime("%d.%m.%Y %H:%M")
+        date_str = created_at.strftime("%d.%m.%Y в %H:%M")
+        
+        response_text = (
+            "❌ <b>Рецепт уже зарегистрирован!</b>\n\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            f"🆔 <b>ID рецепта:</b> <code>{recipe_id}</code>\n"
+            f"📅 <b>Дата регистрации:</b> {date_str}\n"
+            f"💬 <b>Комментарий:</b> {comment}\n"
+            f"👤 <b>Внёс:</b> {user_display}\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            "🔒 <b>Повторная выдача запрещена</b>"
+        )
         
         await message.answer(
-            f"❌ Рецепт уже зарегистрирован.\n\n"
-            f"📅 Дата: {date_str}\n"
-            f"💬 Комментарий: {comment}\n"
-            f"👤 Внёс: {user_id}",
-            reply_markup=get_back_to_menu_button()
+            response_text,
+            reply_markup=get_back_to_menu_button(),
+            parse_mode="HTML"
         )
     else:
-        # Рецепт не найден - выдача возможна
         await message.answer(
-            "✅ Рецепт не найден. Выдача возможна.",
-            reply_markup=get_back_to_menu_button()
+            f"✅ <b>Рецепт не найден в базе</b>\n\n"
+            f"🆔 <b>ID:</b> <code>{recipe_id}</code>\n\n"
+            "✅ <b>Выдача возможна</b>",
+            reply_markup=get_back_to_menu_button(),
+            parse_mode="HTML"
         )
 
     await state.clear()

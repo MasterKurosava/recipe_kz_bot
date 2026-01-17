@@ -8,7 +8,6 @@ logger = logging.getLogger(__name__)
 
 
 class DatabaseMiddleware(BaseMiddleware):
-    """Middleware для передачи pool базы данных в handlers"""
     
     def __init__(self, pool: asyncpg.Pool):
         self.pool = pool
@@ -20,6 +19,5 @@ class DatabaseMiddleware(BaseMiddleware):
         event: Update,
         data: Dict[str, Any]
     ) -> Any:
-        """Добавляем pool в data для доступа из handlers"""
         data["db_pool"] = self.pool
         return await handler(event, data)

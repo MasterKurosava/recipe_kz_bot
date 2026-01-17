@@ -21,10 +21,11 @@ class AddRecipeStates(StatesGroup):
 
 @router.message(F.text == "➕ Добавить рецепт")
 async def cmd_add_recipe(message: Message, state: FSMContext):
-    """Начало добавления рецепта"""
     await message.answer(
-        "➕ Введите ID рецепта для регистрации:",
-        reply_markup=get_cancel_button()
+        "➕ <b>Добавление нового рецепта</b>\n\n"
+        "📝 Введите ID рецепта для регистрации:",
+        reply_markup=get_cancel_button(),
+        parse_mode="HTML"
     )
     await state.set_state(AddRecipeStates.waiting_for_recipe_id)
 
@@ -35,7 +36,6 @@ async def process_recipe_id_add(
     state: FSMContext,
     db_pool: Annotated[asyncpg.Pool, "db_pool"]
 ):
-    """Обработка введённого ID рецепта для добавления"""
     if message.text == "❌ Отмена" or message.text == "🔙 В меню":
         await state.clear()
         await message.answer(
@@ -50,30 +50,31 @@ async def process_recipe_id_add(
         await message.answer("⚠️ Пожалуйста, введите корректный ID рецепта:")
         return
 
-    # Получаем pool из middleware data
     pool = db_pool
 
-    # Проверяем, не существует ли уже такой рецепт
     if await is_duplicate(recipe_id, pool):
         await state.clear()
         await message.answer(
-            "❌ Ошибка: рецепт с таким ID уже зарегистрирован в базе.",
-            reply_markup=get_back_to_menu_button()
+            "❌ <b>Ошибка!</b>\n\n"
+            f"Рецепт с ID <code>{recipe_id}</code> уже зарегистрирован в базе.\n\n"
+            "🔒 Повторная выдача запрещена.",
+            reply_markup=get_back_to_menu_button(),
+            parse_mode="HTML"
         )
         return
 
-    # Сохраняем ID и переходим к комментарию
     await state.update_data(recipe_id=recipe_id)
     await message.answer(
-        "💬 Добавить комментарий?\n(Или нажмите «Пропустить комментарий»):",
-        reply_markup=get_skip_button()
+        "💬 <b>Добавить комментарий?</b>\n\n"
+        "Напишите комментарий или нажмите «Пропустить комментарий»:",
+        reply_markup=get_skip_button(),
+        parse_mode="HTML"
     )
     await state.set_state(AddRecipeStates.waiting_for_comment)
 
 
 @router.message(AddRecipeStates.waiting_for_comment)
 async def process_comment(message: Message, state: FSMContext):
-    """Обработка комментария или пропуска"""
     if message.text == "❌ Отмена" or message.text == "🔙 В меню":
         await state.clear()
         await message.answer(
@@ -89,18 +90,21 @@ async def process_comment(message: Message, state: FSMContext):
     if message.text and message.text != "⏭️ Пропустить комментарий":
         comment = message.text.strip()
 
-    # Сохраняем комментарий в состояние и показываем предпросмотр
     await state.update_data(comment=comment)
     
-    # Формируем предпросмотр
-    preview_text = f"📋 Предпросмотр рецепта:\n\n"
-    preview_text += f"ID: {recipe_id}\n"
-    preview_text += f"Комментарий: {comment if comment else 'Нет комментария'}\n\n"
-    preview_text += f"Подтвердите сохранение:"
+    preview_text = (
+        "📋 <b>Предпросмотр рецепта</b>\n\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        f"🆔 <b>ID рецепта:</b> <code>{recipe_id}</code>\n"
+        f"💬 <b>Комментарий:</b> {comment if comment else '<i>Нет комментария</i>'}\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        "⚠️ <b>Подтвердите сохранение:</b>"
+    )
     
     await message.answer(
         preview_text,
-        reply_markup=get_confirm_buttons()
+        reply_markup=get_confirm_buttons(),
+        parse_mode="HTML"
     )
     await state.set_state(AddRecipeStates.waiting_for_confirmation)
 
@@ -111,7 +115,6 @@ async def process_confirmation(
     state: FSMContext,
     db_pool: Annotated[asyncpg.Pool, "db_pool"]
 ):
-    """Обработка подтверждения сохранения"""
     if message.text == "🔙 В меню" or message.text == "❌ Отменить":
         await state.clear()
         await message.answer(
@@ -125,19 +128,19 @@ async def process_confirmation(
         recipe_id = data.get('recipe_id')
         comment = data.get('comment')
         user_id = message.from_user.id
+        username = message.from_user.username
 
-        # Получаем pool из middleware data
         pool = db_pool
 
         try:
-            # Сохраняем рецепт в базу
-            await add_recipe(recipe_id, user_id, comment, pool)
+            await add_recipe(recipe_id, user_id, comment, username, pool)
             await message.answer(
-                "✅ Рецепт сохранён, повторная выдача запрещена.",
-                reply_markup=get_back_to_menu_button()
+                "✅ <b>Рецепт успешно сохранён!</b>\n\n"
+                "🔒 Повторная выдача по этому рецепту запрещена.",
+                reply_markup=get_back_to_menu_button(),
+                parse_mode="HTML"
             )
         except Exception as e:
-            # Обработка ошибок (например, если рецепт был добавлен между проверкой и сохранением)
             await message.answer(
                 f"❌ Ошибка: не удалось сохранить рецепт.\n"
                 f"Возможно, он уже существует или произошла ошибка базы данных.",

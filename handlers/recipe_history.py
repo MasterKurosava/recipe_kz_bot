@@ -16,10 +16,11 @@ class HistoryStates(StatesGroup):
 
 @router.message(F.text == "🕓 История по рецепту")
 async def cmd_recipe_history(message: Message, state: FSMContext):
-    """Начало получения истории по рецепту"""
     await message.answer(
-        "🕓 Введите ID рецепта для просмотра истории:",
-        reply_markup=get_cancel_button()
+        "🕓 <b>Просмотр истории рецепта</b>\n\n"
+        "📝 Введите ID рецепта для просмотра истории:",
+        reply_markup=get_cancel_button(),
+        parse_mode="HTML"
     )
     await state.set_state(HistoryStates.waiting_for_recipe_id)
 
@@ -30,7 +31,6 @@ async def process_recipe_id_history(
     state: FSMContext,
     db_pool: Annotated[asyncpg.Pool, "db_pool"]
 ):
-    """Обработка введённого ID рецепта для истории"""
     if message.text == "❌ Отмена" or message.text == "🔙 В меню":
         await state.clear()
         await message.answer(
@@ -45,35 +45,40 @@ async def process_recipe_id_history(
         await message.answer("⚠️ Пожалуйста, введите корректный ID рецепта:")
         return
 
-    # Получаем pool из middleware data
     pool = db_pool
 
-    # Получаем историю рецепта
     history = await get_recipe_history(recipe_id, pool)
 
     if not history:
         await message.answer(
-            f"📭 История по рецепту `{recipe_id}` не найдена.",
+            f"📭 <b>История не найдена</b>\n\n"
+            f"🆔 <b>ID рецепта:</b> <code>{recipe_id}</code>\n\n"
+            "История по этому рецепту отсутствует.",
             reply_markup=get_back_to_menu_button(),
-            parse_mode="Markdown"
+            parse_mode="HTML"
         )
     else:
-        # Формируем сообщение с историей
-        history_text = f"📋 История по рецепту: `{recipe_id}`\n\n"
+        history_text = (
+            f"📋 <b>История по рецепту</b>\n"
+            f"🆔 <b>ID:</b> <code>{recipe_id}</code>\n\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+        )
         
         for i, record in enumerate(history, 1):
-            date_str = record['created_at'].strftime("%d.%m.%Y %H:%M")
+            date_str = record['created_at'].strftime("%d.%m.%Y в %H:%M")
             comment = record['comment'] if record['comment'] else "Нет комментария"
-            user_id = record['user_id']
+            username = record.get('username')
+            user_display = f"@{username}" if username else f"ID: {record['user_id']}"
             
-            history_text += f"📌 Запись #{i}\n"
-            history_text += f"📅 Дата: {date_str}\n"
-            history_text += f"💬 Комментарий: {comment}\n"
-            history_text += f"👤 Внёс: {user_id}\n\n"
+            history_text += (
+                f"📌 <b>Запись #{i}</b>\n"
+                f"📅 <b>Дата:</b> {date_str}\n"
+                f"💬 <b>Комментарий:</b> {comment}\n"
+                f"👤 <b>Внёс:</b> {user_display}\n\n"
+                "━━━━━━━━━━━━━━━━━━━━\n\n"
+            )
 
-        # Telegram имеет лимит на длину сообщения (4096 символов)
         if len(history_text) > 4096:
-            # Разбиваем на части
             chunks = []
             current_chunk = ""
             for line in history_text.split('\n'):
@@ -89,13 +94,13 @@ async def process_recipe_id_history(
                 await message.answer(
                     chunk,
                     reply_markup=get_back_to_menu_button() if chunk == chunks[-1] else None,
-                    parse_mode="Markdown"
+                    parse_mode="HTML"
                 )
         else:
             await message.answer(
                 history_text,
                 reply_markup=get_back_to_menu_button(),
-                parse_mode="Markdown"
+                parse_mode="HTML"
             )
 
     await state.clear()

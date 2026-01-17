@@ -14,7 +14,6 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import TCPServer
 
 class HealthCheckHandler(BaseHTTPRequestHandler):
-    """Простой HTTP handler для health checks"""
     def do_GET(self):
         if self.path in ('/', '/health'):
             self.send_response(200)
@@ -26,13 +25,10 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
             self.end_headers()
     
     def log_message(self, format, *args):
-        # Отключаем логирование HTTP запросов
         pass
 
 def run_health_server():
-    """Запуск простого HTTP сервера для health checks"""
     try:
-        # Используем TCPServer с reuse_address=True
         server = TCPServer(("0.0.0.0", 8080), HealthCheckHandler, bind_and_activate=False)
         server.allow_reuse_address = True
         server.server_bind()
@@ -40,14 +36,11 @@ def run_health_server():
         server.serve_forever()
     except Exception as e:
         print(f"Health server error: {e}", file=sys.stderr)
-        # Не падаем, просто не работаем health checks
 
-# Запускаем health server в отдельном потоке
 health_thread = threading.Thread(target=run_health_server, daemon=True, name="HealthServer")
 health_thread.start()
 
 
-# Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -56,30 +49,23 @@ logger = logging.getLogger(__name__)
 
 
 async def main():
-    """Главная функция для запуска бота"""
-    # Инициализация бота и диспетчера
     bot = Bot(token=BOT_TOKEN)
     dp = Dispatcher(storage=MemoryStorage())
 
-    # Подключение к базе данных и получение pool
     logger.info("Подключение к базе данных...")
     pool = await db.connect()
     logger.info("База данных подключена")
 
-    # Подключение middleware
-    # DatabaseMiddleware должен быть первым, чтобы pool был доступен в других middleware
     dp.message.middleware(DatabaseMiddleware(pool))
     dp.callback_query.middleware(DatabaseMiddleware(pool))
     dp.message.middleware(LoggingMiddleware())
     dp.callback_query.middleware(LoggingMiddleware())
 
-    # Регистрация роутеров (handlers)
     dp.include_router(common.router)
     dp.include_router(check_recipe.router)
     dp.include_router(add_recipe.router)
     dp.include_router(recipe_history.router)
 
-    # Запуск polling
     logger.info("Бот запущен")
     try:
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())

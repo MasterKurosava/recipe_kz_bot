@@ -9,18 +9,18 @@ router = Router()
 
 @router.message(Command("start"))
 async def cmd_start(message: Message):
-    """Обработчик команды /start"""
     await message.answer(
-        "👋 Добро пожаловать в бот для управления рецептами!\n\n"
+        "👋 <b>Добро пожаловать!</b>\n\n"
+        "🏥 <b>Бот для управления рецептами</b>\n\n"
         "Выберите действие из меню:",
-        reply_markup=get_main_menu()
+        reply_markup=get_main_menu(),
+        parse_mode="HTML"
     )
 
 
 @router.message(Command("menu"))
 @router.message(F.text == "🔙 В меню")
 async def cmd_menu(message: Message, state: FSMContext):
-    """Показать главное меню и сбросить FSM"""
     await state.clear()
     await message.answer(
         "Главное меню:",
@@ -30,7 +30,6 @@ async def cmd_menu(message: Message, state: FSMContext):
 
 @router.message(F.text == "❌ Отмена")
 async def cmd_cancel(message: Message, state: FSMContext):
-    """Отмена текущего действия и возврат в главное меню"""
     await state.clear()
     await message.answer(
         "❌ Действие отменено.",

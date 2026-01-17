@@ -8,18 +8,15 @@ class Database:
         self.pool: Optional[asyncpg.Pool] = None
 
     async def connect(self) -> asyncpg.Pool:
-        """Подключение к базе данных и создание таблицы"""
         self.pool = await asyncpg.create_pool(DATABASE_URL)
         await self._create_tables()
         return self.pool
 
     async def disconnect(self):
-        """Закрытие соединения с базой данных"""
         if self.pool:
             await self.pool.close()
 
     async def _create_tables(self):
-        """Создание таблицы recipes и индекса если их нет"""
         async with self.pool.acquire() as conn:
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS recipes (
@@ -27,14 +24,19 @@ class Database:
                     recipe_id TEXT UNIQUE NOT NULL,
                     comment TEXT,
                     created_at TIMESTAMP DEFAULT NOW(),
-                    user_id BIGINT NOT NULL
+                    user_id BIGINT NOT NULL,
+                    username TEXT
                 )
             """)
-            # Создаём индекс для быстрого поиска по recipe_id
             await conn.execute("""
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_recipe_id ON recipes(recipe_id)
             """)
+            try:
+                await conn.execute("""
+                    ALTER TABLE recipes ADD COLUMN IF NOT EXISTS username TEXT
+                """)
+            except Exception:
+                pass
 
 
-# Глобальный экземпляр базы данных
 db = Database()
