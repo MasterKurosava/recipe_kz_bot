@@ -2,7 +2,7 @@ import logging
 from datetime import datetime
 from typing import Any, Awaitable, Callable, Dict
 from aiogram import BaseMiddleware
-from aiogram.types import Message, Update
+from aiogram.types import Message, CallbackQuery
 
 logger = logging.getLogger(__name__)
 
@@ -12,8 +12,8 @@ class LoggingMiddleware(BaseMiddleware):
     
     async def __call__(
         self,
-        handler: Callable[[Update, Dict[str, Any]], Awaitable[Any]],
-        event: Update,
+        handler: Callable[[Any, Dict[str, Any]], Awaitable[Any]],
+        event: Any,
         data: Dict[str, Any]
     ) -> Any:
         """Логирование информации об апдейте"""
@@ -21,18 +21,18 @@ class LoggingMiddleware(BaseMiddleware):
         # Получаем информацию о пользователе
         user_id = None
         username = None
-        update_type = event.event_type if hasattr(event, 'event_type') else type(event).__name__
+        update_type = type(event).__name__
+        text = ""
         
-        if event.message:
-            user_id = event.message.from_user.id if event.message.from_user else None
-            username = event.message.from_user.username if event.message.from_user else None
-            text = event.message.text or event.message.caption or ""
-        elif event.callback_query:
-            user_id = event.callback_query.from_user.id if event.callback_query.from_user else None
-            username = event.callback_query.from_user.username if event.callback_query.from_user else None
-            text = event.callback_query.data or ""
-        else:
-            text = ""
+        # В aiogram 3 event уже является конкретным типом (Message, CallbackQuery и т.д.)
+        if isinstance(event, Message):
+            user_id = event.from_user.id if event.from_user else None
+            username = event.from_user.username if event.from_user else None
+            text = event.text or event.caption or ""
+        elif isinstance(event, CallbackQuery):
+            user_id = event.from_user.id if event.from_user else None
+            username = event.from_user.username if event.from_user else None
+            text = event.data or ""
         
         # Формируем сообщение для лога
         log_message = (
