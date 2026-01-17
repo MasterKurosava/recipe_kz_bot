@@ -8,6 +8,21 @@ from handlers import common, check_recipe, add_recipe, recipe_history
 from middlewares.logging import LoggingMiddleware
 from middlewares.database import DatabaseMiddleware
 
+import threading
+from aiohttp import web
+
+async def healthcheck(request):
+    return web.Response(text="OK")
+
+def run_health_server():
+    app = web.Application()
+    app.router.add_get("/", healthcheck)
+    web.run_app(app, port=8080)
+
+# Запускаем сервер-заглушку
+threading.Thread(target=run_health_server, daemon=True).start()
+
+
 # Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
