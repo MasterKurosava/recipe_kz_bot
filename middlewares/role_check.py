@@ -1,7 +1,7 @@
 from typing import List, Callable, Awaitable, Dict, Any
 from aiogram import BaseMiddleware
 from aiogram.types import Message, CallbackQuery
-from services.user_service import get_user_by_telegram_id
+from services.user_service import get_user_by_telegram_id, get_users_by_role
 import asyncpg
 
 
@@ -31,11 +31,28 @@ class RoleCheckMiddleware(BaseMiddleware):
         user = await get_user_by_telegram_id(user_id, pool)
 
         if not user or user['role'] not in self.allowed_roles:
+            admins = await get_users_by_role('admin', pool)
+            
+            admin_text = ""
+            if admins:
+                admin_usernames = []
+                for admin in admins:
+                    if admin.get('username'):
+                        admin_usernames.append(f"@{admin['username']}")
+                
+                if admin_usernames:
+                    admin_text = f"администратором" if len(admin_usernames) == 1 else "администраторами"
+                    admin_text += f" {', '.join(admin_usernames)}"
+                else:
+                    admin_text = "администратором"
+            else:
+                admin_text = "администратором"
+            
             if isinstance(event, Message):
                 await event.answer(
                     "🚫 <b>Доступ запрещён</b>\n\n"
                     "Бот доступен только для авторизованных пользователей.\n"
-                    "Свяжитесь с администратором: @admin1 или @admin2",
+                    f"Свяжитесь с {admin_text}.",
                     parse_mode="HTML"
                 )
             elif isinstance(event, CallbackQuery):
