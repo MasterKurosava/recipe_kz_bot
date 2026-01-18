@@ -8,7 +8,6 @@ from services.recipe_service import create_recipe, add_recipe_item, get_recipe_b
 from keyboards.common import get_duration_keyboard, get_recipe_items_actions_keyboard, get_confirm_keyboard, get_item_delete_keyboard, get_doctor_recipe_actions_keyboard, get_item_edit_keyboard
 from utils.recipe_formatter import format_recipe_detail, format_recipe_logs
 from utils.message_splitter import split_long_message
-import json
 
 router = Router()
 
@@ -308,7 +307,8 @@ async def cmd_my_recipes(message: Message, user: dict, db_pool: Annotated[asyncp
     await state.set_state(DoctorRecipeStates.waiting_for_recipe_id)
 
 
-async def handle_doctor_recipe_id(message: Message, state: FSMContext, user: dict, db_pool: Annotated[asyncpg.Pool, "db_pool"]):
+@router.message(DoctorRecipeStates.waiting_for_recipe_id)
+async def process_doctor_recipe_id(message: Message, state: FSMContext, user: dict, db_pool: Annotated[asyncpg.Pool, "db_pool"]):
     try:
         recipe_id = int(message.text.strip())
     except ValueError:
@@ -342,8 +342,6 @@ async def handle_doctor_recipe_id(message: Message, state: FSMContext, user: dic
         await message.answer(recipe_text, parse_mode="HTML")
     
     await state.clear()
-
-
 
 
 @router.callback_query(F.data.startswith("edit_quantity_"))

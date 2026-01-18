@@ -108,6 +108,7 @@ async def mark_recipe_as_used(recipe_id: int, pharmacist_id: int, pool: asyncpg.
 
 
 async def update_recipe_item_quantity(item_id: int, new_quantity: int, pharmacist_id: int, recipe_id: int, pool: asyncpg.Pool) -> None:
+    import json
     async with pool.acquire() as conn:
         async with conn.transaction():
             old_quantity = await conn.fetchval(
@@ -131,7 +132,7 @@ async def update_recipe_item_quantity(item_id: int, new_quantity: int, pharmacis
                 INSERT INTO recipe_logs (recipe_id, pharmacist_id, action_type, changes)
                 VALUES ($1, $2, 'edited_quantity', $3::jsonb)
                 """,
-                recipe_id, pharmacist_id, str(changes).replace("'", '"')
+                recipe_id, pharmacist_id, json.dumps(changes)
             )
 
 

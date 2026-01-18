@@ -154,19 +154,12 @@ async def back_to_recipe(callback: CallbackQuery, db_pool: Annotated[asyncpg.Poo
         await callback.answer("Рецепт не найден", show_alert=True)
         return
     
-    items_text = "\n".join([
-        f"• {item['drug_name']} - {item['quantity']} шт."
-        for item in recipe['items']
-    ])
-    
-    recipe_text = (
-        f"📝 <b>Рецепт #{recipe_id}</b>\n\n"
-        f"💊 <b>Препараты:</b>\n{items_text}\n\n"
-    )
+    from utils.recipe_formatter import format_recipe_detail
+    recipe_text = format_recipe_detail(recipe, recipe_id)
     
     await callback.message.edit_text(
         recipe_text,
-        reply_markup=get_recipe_actions_keyboard(recipe_id),
+        reply_markup=get_recipe_actions_keyboard(recipe_id) if recipe['status'] == 'active' else None,
         parse_mode="HTML"
     )
     await callback.answer()
