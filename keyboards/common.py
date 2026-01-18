@@ -7,7 +7,8 @@ def get_role_menu(role: str) -> ReplyKeyboardMarkup:
             keyboard=[
                 [KeyboardButton(text="➕ Добавить пользователя")],
                 [KeyboardButton(text="👥 Список пользователей")],
-                [KeyboardButton(text="📋 Все рецепты")]
+                [KeyboardButton(text="➕ Добавить рецепт")],
+                [KeyboardButton(text="🔍 Найти рецепт")]
             ],
             resize_keyboard=True
         )

@@ -40,7 +40,26 @@ class RoleCheckMiddleware(BaseMiddleware):
                         parse_mode="HTML"
                     )
             elif isinstance(event, CallbackQuery):
-                await event.answer("Доступ запрещён. Свяжитесь с администратором.", show_alert=True)
+                if pool:
+                    admins = await get_users_by_role('admin', pool)
+                    admin_text = format_admin_contacts(admins)
+                    
+                    await event.message.answer(
+                        get_access_denied_message(admin_text),
+                        parse_mode="HTML"
+                    )
+                    
+                    user_full_name = event.from_user.full_name if event.from_user else "Пользователь"
+                    user_username = event.from_user.username if event.from_user and event.from_user.username else None
+                    user_id = event.from_user.id if event.from_user else None
+                    
+                    if user_id:
+                        await event.message.answer(
+                            get_user_id_message(user_full_name, user_username, user_id),
+                            parse_mode="HTML"
+                        )
+                
+                await event.answer()
             return
 
         return await handler(event, data)

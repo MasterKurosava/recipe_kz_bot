@@ -79,11 +79,11 @@ async def main():
     admin.router.message.middleware(RoleCheckMiddleware(['admin']))
     admin.router.callback_query.middleware(RoleCheckMiddleware(['admin']))
     
-    doctor.router.message.middleware(RoleCheckMiddleware(['doctor']))
-    doctor.router.callback_query.middleware(RoleCheckMiddleware(['doctor']))
+    doctor.router.message.middleware(RoleCheckMiddleware(['admin', 'doctor']))
+    doctor.router.callback_query.middleware(RoleCheckMiddleware(['admin', 'doctor']))
     
-    pharmacist.router.message.middleware(RoleCheckMiddleware(['pharmacist']))
-    pharmacist.router.callback_query.middleware(RoleCheckMiddleware(['pharmacist']))
+    pharmacist.router.message.middleware(RoleCheckMiddleware(['admin', 'pharmacist']))
+    pharmacist.router.callback_query.middleware(RoleCheckMiddleware(['admin', 'pharmacist']))
 
     dp.include_router(common.router)
     dp.include_router(admin.router)
