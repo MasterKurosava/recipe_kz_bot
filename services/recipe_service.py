@@ -58,6 +58,39 @@ async def get_recipe_by_id(recipe_id: int, pool: asyncpg.Pool) -> Optional[Dict]
         return None
 
 
+async def get_recipes_by_doctor(doctor_id: int, pool: asyncpg.Pool, limit: int = 50) -> List[Dict]:
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT r.id, r.doctor_id, r.created_at, r.duration_days, r.comment, r.status
+            FROM recipes r
+            WHERE r.doctor_id = $1
+            ORDER BY r.created_at DESC
+            LIMIT $2
+            """,
+            doctor_id, limit
+        )
+        recipes = []
+        for row in rows:
+            items = await conn.fetch(
+                "SELECT id, drug_name, quantity FROM recipe_items WHERE recipe_id = $1",
+                row['id']
+            )
+            recipes.append({
+                'id': row['id'],
+                'doctor_id': row['doctor_id'],
+                'created_at': row['created_at'],
+                'duration_days': row['duration_days'],
+                'comment': row['comment'],
+                'status': row['status'],
+                'items': [
+                    {'id': item['id'], 'drug_name': item['drug_name'], 'quantity': item['quantity']}
+                    for item in items
+                ]
+            })
+        return recipes
+
+
 async def mark_recipe_as_used(recipe_id: int, pharmacist_id: int, pool: asyncpg.Pool) -> None:
     async with pool.acquire() as conn:
         async with conn.transaction():
@@ -77,11 +110,10 @@ async def mark_recipe_as_used(recipe_id: int, pharmacist_id: int, pool: asyncpg.
 async def update_recipe_item_quantity(item_id: int, new_quantity: int, pharmacist_id: int, recipe_id: int, pool: asyncpg.Pool) -> None:
     async with pool.acquire() as conn:
         async with conn.transaction():
-            old_quantity_row = await conn.fetchrow(
+            old_quantity = await conn.fetchval(
                 "SELECT quantity FROM recipe_items WHERE id = $1",
                 item_id
             )
-            old_quantity = old_quantity_row['quantity'] if old_quantity_row else None
             
             await conn.execute(
                 "UPDATE recipe_items SET quantity = $1 WHERE id = $2",
@@ -89,9 +121,9 @@ async def update_recipe_item_quantity(item_id: int, new_quantity: int, pharmacis
             )
             
             changes = {
-                'item_id': item_id,
-                'old_quantity': old_quantity,
-                'new_quantity': new_quantity
+                "item_id": item_id,
+                "old_quantity": old_quantity,
+                "new_quantity": new_quantity
             }
             
             await conn.execute(

@@ -15,7 +15,8 @@ def get_role_menu(role: str) -> ReplyKeyboardMarkup:
     elif role == 'doctor':
         keyboard = ReplyKeyboardMarkup(
             keyboard=[
-                [KeyboardButton(text="➕ Добавить рецепт")]
+                [KeyboardButton(text="➕ Добавить рецепт")],
+                [KeyboardButton(text="📋 Мои рецепты")]
             ],
             resize_keyboard=True
         )
@@ -74,6 +75,15 @@ def get_recipe_actions_keyboard(recipe_id: int) -> InlineKeyboardMarkup:
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="✅ Отметить как списанный", callback_data=f"mark_used_{recipe_id}")],
+            [InlineKeyboardButton(text="✏️ Изменить количество", callback_data=f"edit_quantity_{recipe_id}")]
+        ]
+    )
+    return keyboard
+
+
+def get_doctor_recipe_actions_keyboard(recipe_id: int) -> InlineKeyboardMarkup:
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
             [InlineKeyboardButton(text="✏️ Изменить количество", callback_data=f"edit_quantity_{recipe_id}")]
         ]
     )
