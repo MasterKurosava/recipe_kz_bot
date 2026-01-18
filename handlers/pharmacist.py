@@ -45,39 +45,9 @@ async def process_recipe_id(message: Message, state: FSMContext, db_pool: Annota
         await state.clear()
         return
     
-    from datetime import datetime, timedelta
-    created_at = recipe['created_at']
-    expires_at = created_at + timedelta(days=recipe['duration_days'])
-    is_expired = datetime.now() > expires_at
+    from utils.recipe_formatter import format_recipe_detail, format_recipe_logs
     
-    status_emoji = "✅" if recipe['status'] == 'used' else "📝"
-    status_text = "Списан" if recipe['status'] == 'used' else "Активен"
-    
-    items_text = "\n".join([
-        f"• {item['drug_name']} - {item['quantity']} шт."
-        for item in recipe['items']
-    ])
-    
-    recipe_text = (
-        f"{status_emoji} <b>Рецепт #{recipe_id}</b>\n\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        f"👨‍⚕️ <b>Врач:</b> {recipe.get('doctor_name') or recipe.get('doctor_username')}\n"
-        f"📅 <b>Дата создания:</b> {created_at.strftime('%d.%m.%Y %H:%M')}\n"
-        f"⏱ <b>Срок действия:</b> {recipe['duration_days']} дней (до {expires_at.strftime('%d.%m.%Y')})\n"
-        f"📊 <b>Статус:</b> {status_text}\n"
-    )
-    
-    if is_expired and recipe['status'] == 'active':
-        recipe_text += "⚠️ <b>Рецепт просрочен!</b>\n"
-    
-    recipe_text += (
-        f"\n💊 <b>Препараты:</b>\n{items_text}\n"
-    )
-    
-    if recipe.get('comment'):
-        recipe_text += f"\n💬 <b>Комментарий:</b> {recipe['comment']}\n"
-    
-    recipe_text += "━━━━━━━━━━━━━━━━━━━━"
+    recipe_text = format_recipe_detail(recipe, recipe_id)
     
     if recipe['status'] == 'active':
         await message.answer(
@@ -87,13 +57,7 @@ async def process_recipe_id(message: Message, state: FSMContext, db_pool: Annota
         )
     else:
         logs = await get_recipe_logs(recipe_id, db_pool)
-        if logs:
-            recipe_text += "\n\n📝 <b>История изменений:</b>\n"
-            for log in logs:
-                pharmacist_name = log.get('pharmacist_username') or log.get('pharmacist_name') or 'Unknown'
-                action_text = "Списан" if log['action_type'] == 'used' else "Изменено количество"
-                recipe_text += f"• {action_text} - {pharmacist_name} ({log['created_at'].strftime('%d.%m.%Y %H:%M')})\n"
-        
+        recipe_text += format_recipe_logs(logs)
         await message.answer(recipe_text, parse_mode="HTML")
     
     await state.clear()

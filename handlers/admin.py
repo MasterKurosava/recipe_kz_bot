@@ -8,6 +8,7 @@ import asyncpg
 from services.user_service import add_user, get_users_by_role, delete_user, get_user_by_id, get_user_by_telegram_id
 from services.recipe_service import get_all_recipes
 from keyboards.common import get_role_menu
+from utils.date_formatter import format_datetime
 
 router = Router()
 
@@ -169,12 +170,18 @@ async def cmd_all_recipes(message: Message, user: dict, db_pool: Annotated[async
     
     text = f"📋 <b>Все рецепты (последние {len(recipes)})</b>\n\n"
     
+    from utils.recipe_formatter import format_recipe_status, format_doctor_name
+    from utils.date_formatter import format_duration_days
+    
     for recipe in recipes[:20]:
-        status_emoji = "✅" if recipe['status'] == 'used' else "📝"
+        status_emoji, _ = format_recipe_status(recipe)
+        doctor_name = format_doctor_name(recipe)
+        duration_text = format_duration_days(recipe['duration_days'])
+        
         text += f"{status_emoji} <b>Рецепт #{recipe['id']}</b>\n"
-        text += f"👨‍⚕️ Врач: {recipe.get('doctor_name') or recipe.get('doctor_username') or 'N/A'}\n"
-        text += f"📅 Дата: {recipe['created_at'].strftime('%d.%m.%Y %H:%M')}\n"
-        text += f"⏱ Длительность: {recipe['duration_days']} дней\n"
+        text += f"👨‍⚕️ Врач: {doctor_name}\n"
+        text += f"📅 Дата: {format_datetime(recipe['created_at'])}\n"
+        text += f"⏱ Длительность: {duration_text}\n"
         text += f"💊 Препараты: {len(recipe['items'])}\n\n"
     
     if len(recipes) > 20:

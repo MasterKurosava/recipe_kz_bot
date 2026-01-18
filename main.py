@@ -69,6 +69,9 @@ async def main():
     dp.callback_query.middleware(DatabaseMiddleware(pool))
     dp.message.middleware(LoggingMiddleware())
     dp.callback_query.middleware(LoggingMiddleware())
+    
+    from middlewares.unregistered import UnregisteredUserMiddleware
+    dp.message.middleware(UnregisteredUserMiddleware())
 
     common.router.message.middleware(RoleCheckMiddleware(['admin', 'doctor', 'pharmacist']))
     common.router.callback_query.middleware(RoleCheckMiddleware(['admin', 'doctor', 'pharmacist']))

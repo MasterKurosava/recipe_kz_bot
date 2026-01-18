@@ -1,7 +1,10 @@
 from typing import List, Callable, Awaitable, Dict, Any
 from aiogram import BaseMiddleware
 from aiogram.types import Message, CallbackQuery
-from services.user_service import get_user_by_telegram_id, get_users_by_role
+from services.user_service import get_users_by_role
+from utils.admin_formatter import format_admin_contacts
+from utils.messages import get_access_denied_message, get_user_id_message
+from utils.user_extractor import extract_user_id, extract_user_info
 import asyncpg
 
 
@@ -17,47 +20,27 @@ class RoleCheckMiddleware(BaseMiddleware):
         data: Dict[str, Any]
     ) -> Any:
         pool: asyncpg.Pool = data.get("db_pool")
+        user = data.get('user')
         
-        if isinstance(event, Message):
-            user_id = event.from_user.id if event.from_user else None
-        elif isinstance(event, CallbackQuery):
-            user_id = event.from_user.id if event.from_user else None
-        else:
-            return await handler(event, data)
-
-        if not user_id or not pool:
-            return await handler(event, data)
-
-        user = await get_user_by_telegram_id(user_id, pool)
-
         if not user or user['role'] not in self.allowed_roles:
-            admins = await get_users_by_role('admin', pool)
-            
-            admin_text = ""
-            if admins:
-                admin_usernames = []
-                for admin in admins:
-                    if admin.get('username'):
-                        admin_usernames.append(f"@{admin['username']}")
-                
-                if admin_usernames:
-                    admin_text = f"администратором" if len(admin_usernames) == 1 else "администраторами"
-                    admin_text += f" {', '.join(admin_usernames)}"
-                else:
-                    admin_text = "администратором"
-            else:
-                admin_text = "администратором"
-            
             if isinstance(event, Message):
+                admins = await get_users_by_role('admin', pool)
+                admin_text = format_admin_contacts(admins)
+                
+                user_full_name, user_username, user_id = extract_user_info(event)
+                
                 await event.answer(
-                    "🚫 <b>Доступ запрещён</b>\n\n"
-                    "Бот доступен только для авторизованных пользователей.\n"
-                    f"Свяжитесь с {admin_text}.",
+                    get_access_denied_message(admin_text),
                     parse_mode="HTML"
                 )
+                
+                if user_id:
+                    await event.answer(
+                        get_user_id_message(user_full_name, user_username, user_id),
+                        parse_mode="HTML"
+                    )
             elif isinstance(event, CallbackQuery):
-                await event.answer("Доступ запрещён", show_alert=True)
+                await event.answer("Доступ запрещён. Свяжитесь с администратором.", show_alert=True)
             return
 
-        data['user'] = user
         return await handler(event, data)

@@ -55,7 +55,8 @@ async def process_recipe_id_check(
         username = recipe.get('username')
         user_display = f"@{username}" if username else f"ID: {recipe['user_id']}"
         
-        date_str = created_at.strftime("%d.%m.%Y в %H:%M")
+        from utils.date_formatter import format_datetime
+        date_str = format_datetime(created_at).replace(" ", " в ")
         
         response_text = (
             "❌ <b>Рецепт уже зарегистрирован!</b>\n\n"

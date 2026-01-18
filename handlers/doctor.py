@@ -205,16 +205,9 @@ async def show_confirmation(message: Message | CallbackQuery, state: FSMContext,
         for item in data['items']
     ])
     
+    from utils.date_formatter import format_duration_days
     duration_days = data.get('duration_days', 0)
-    duration_text = f"{duration_days} дней"
-    if duration_days == 30:
-        duration_text = "1 месяц"
-    elif duration_days == 90:
-        duration_text = "3 месяца"
-    elif duration_days == 180:
-        duration_text = "6 месяцев"
-    elif duration_days == 365:
-        duration_text = "1 год"
+    duration_text = format_duration_days(duration_days)
     
     confirmation_text = (
         "📋 <b>Предпросмотр рецепта</b>\n\n"

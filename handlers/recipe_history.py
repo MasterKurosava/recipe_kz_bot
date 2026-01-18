@@ -65,7 +65,8 @@ async def process_recipe_id_history(
         )
         
         for i, record in enumerate(history, 1):
-            date_str = record['created_at'].strftime("%d.%m.%Y в %H:%M")
+            from utils.date_formatter import format_datetime
+            date_str = format_datetime(record['created_at']).replace(" ", " в ")
             comment = record['comment'] if record['comment'] else "Нет комментария"
             username = record.get('username')
             user_display = f"@{username}" if username else f"ID: {record['user_id']}"
@@ -78,28 +79,13 @@ async def process_recipe_id_history(
                 "━━━━━━━━━━━━━━━━━━━━\n\n"
             )
 
-        if len(history_text) > 4096:
-            chunks = []
-            current_chunk = ""
-            for line in history_text.split('\n'):
-                if len(current_chunk + line + '\n') > 4000:
-                    chunks.append(current_chunk)
-                    current_chunk = line + '\n'
-                else:
-                    current_chunk += line + '\n'
-            if current_chunk:
-                chunks.append(current_chunk)
-            
-            for chunk in chunks:
-                await message.answer(
-                    chunk,
-                    reply_markup=get_back_to_menu_button() if chunk == chunks[-1] else None,
-                    parse_mode="HTML"
-                )
-        else:
+        from utils.message_splitter import split_long_message
+        
+        chunks = split_long_message(history_text, max_length=4000)
+        for i, chunk in enumerate(chunks):
             await message.answer(
-                history_text,
-                reply_markup=get_back_to_menu_button(),
+                chunk,
+                reply_markup=get_back_to_menu_button() if i == len(chunks) - 1 else None,
                 parse_mode="HTML"
             )
 
