@@ -1,51 +1,60 @@
 import asyncio
 import logging
+import sys
+import threading
+from aiohttp import web
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from config import BOT_TOKEN
-from database import db
-from handlers import common, check_recipe, add_recipe, recipe_history
-from middlewares.logging import LoggingMiddleware
+from db.database import db
+from handlers import common, admin, doctor, pharmacist
 from middlewares.database import DatabaseMiddleware
-
-import threading
-import sys
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from socketserver import TCPServer
-
-class HealthCheckHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        if self.path in ('/', '/health'):
-            self.send_response(200)
-            self.send_header('Content-type', 'text/plain')
-            self.end_headers()
-            self.wfile.write(b'OK')
-        else:
-            self.send_response(404)
-            self.end_headers()
-    
-    def log_message(self, format, *args):
-        pass
-
-def run_health_server():
-    try:
-        server = TCPServer(("0.0.0.0", 8080), HealthCheckHandler, bind_and_activate=False)
-        server.allow_reuse_address = True
-        server.server_bind()
-        server.server_activate()
-        server.serve_forever()
-    except Exception as e:
-        print(f"Health server error: {e}", file=sys.stderr)
-
-health_thread = threading.Thread(target=run_health_server, daemon=True, name="HealthServer")
-health_thread.start()
-
+from middlewares.logging import LoggingMiddleware
+from middlewares.role_check import RoleCheckMiddleware
 
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+async def healthcheck(request):
+    return web.Response(text="OK")
+
+
+def run_health_server():
+    async def init():
+        app = web.Application()
+        app.router.add_get('/', healthcheck)
+        app.router.add_get('/health', healthcheck)
+        return app
+    
+    async def run():
+        app = await init()
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, '0.0.0.0', 8080)
+        await site.start()
+        print("Health check server started on port 8080")
+        try:
+            while True:
+                await asyncio.sleep(3600)
+        except asyncio.CancelledError:
+            pass
+    
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(run())
+    except KeyboardInterrupt:
+        pass
+    finally:
+        loop.close()
+
+
+health_thread = threading.Thread(target=run_health_server, daemon=True, name="HealthServer")
+health_thread.start()
 
 
 async def main():
@@ -61,10 +70,22 @@ async def main():
     dp.message.middleware(LoggingMiddleware())
     dp.callback_query.middleware(LoggingMiddleware())
 
+    common.router.message.middleware(RoleCheckMiddleware(['admin', 'doctor', 'pharmacist']))
+    common.router.callback_query.middleware(RoleCheckMiddleware(['admin', 'doctor', 'pharmacist']))
+    
+    admin.router.message.middleware(RoleCheckMiddleware(['admin']))
+    admin.router.callback_query.middleware(RoleCheckMiddleware(['admin']))
+    
+    doctor.router.message.middleware(RoleCheckMiddleware(['doctor']))
+    doctor.router.callback_query.middleware(RoleCheckMiddleware(['doctor']))
+    
+    pharmacist.router.message.middleware(RoleCheckMiddleware(['pharmacist']))
+    pharmacist.router.callback_query.middleware(RoleCheckMiddleware(['pharmacist']))
+
     dp.include_router(common.router)
-    dp.include_router(check_recipe.router)
-    dp.include_router(add_recipe.router)
-    dp.include_router(recipe_history.router)
+    dp.include_router(admin.router)
+    dp.include_router(doctor.router)
+    dp.include_router(pharmacist.router)
 
     logger.info("Бот запущен")
     try:

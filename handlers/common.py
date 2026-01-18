@@ -1,37 +1,22 @@
 from aiogram import Router, F
 from aiogram.types import Message
 from aiogram.filters import Command
-from aiogram.fsm.context import FSMContext
-from keyboards import get_main_menu
+from keyboards.common import get_role_menu
 
 router = Router()
 
 
 @router.message(Command("start"))
-async def cmd_start(message: Message):
+async def cmd_start(message: Message, user: dict):
+    role_name = {
+        'admin': '👑 Администратор',
+        'doctor': '👨‍⚕️ Врач',
+        'pharmacist': '💊 Фармацевт'
+    }.get(user['role'], 'Пользователь')
+    
     await message.answer(
-        "👋 <b>Добро пожаловать!</b>\n\n"
-        "🏥 <b>Бот для управления рецептами</b>\n\n"
+        f"👋 <b>Добро пожаловать, {role_name}!</b>\n\n"
         "Выберите действие из меню:",
-        reply_markup=get_main_menu(),
+        reply_markup=get_role_menu(user['role']),
         parse_mode="HTML"
-    )
-
-
-@router.message(Command("menu"))
-@router.message(F.text == "🔙 В меню")
-async def cmd_menu(message: Message, state: FSMContext):
-    await state.clear()
-    await message.answer(
-        "Главное меню:",
-        reply_markup=get_main_menu()
-    )
-
-
-@router.message(F.text == "❌ Отмена")
-async def cmd_cancel(message: Message, state: FSMContext):
-    await state.clear()
-    await message.answer(
-        "❌ Действие отменено.",
-        reply_markup=get_main_menu()
     )
