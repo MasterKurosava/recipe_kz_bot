@@ -70,6 +70,7 @@ async def main():
     dp.message.middleware(LoggingMiddleware())
     dp.callback_query.middleware(LoggingMiddleware())
     
+    
     from middlewares.unregistered import UnregisteredUserMiddleware
     dp.message.middleware(UnregisteredUserMiddleware())
 
