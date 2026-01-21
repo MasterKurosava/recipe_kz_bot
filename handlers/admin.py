@@ -20,6 +20,10 @@ class AddUserStates(StatesGroup):
     waiting_for_role = State()
 
 
+class FindRecipeStates(StatesGroup):
+    waiting_for_recipe_id = State()
+
+
 @router.message(F.text == "➕ Добавить пользователя")
 async def cmd_add_user(message: Message, state: FSMContext, user: dict):
     await message.answer(
