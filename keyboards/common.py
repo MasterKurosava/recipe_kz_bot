@@ -52,8 +52,9 @@ def get_recipe_items_actions_keyboard() -> InlineKeyboardMarkup:
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="➕ Добавить ещё", callback_data="add_more_item")],
-            [InlineKeyboardButton(text="❌ Удалить", callback_data="delete_item")],
-            [InlineKeyboardButton(text="✅ Продолжить", callback_data="continue_recipe")]
+            [InlineKeyboardButton(text="❌ Удалить препарат", callback_data="delete_item")],
+            [InlineKeyboardButton(text="✅ Продолжить", callback_data="continue_recipe")],
+            [InlineKeyboardButton(text="🚫 Отменить рецепт", callback_data="cancel_recipe_creation")]
         ]
     )
     return keyboard

@@ -77,7 +77,14 @@ async def process_recipe_id(message: Message, state: FSMContext, db_pool: Annota
 
 
 @router.message(AddRecipeStates.waiting_for_drug_name)
-async def process_drug_name(message: Message, state: FSMContext):
+async def process_drug_name(message: Message, state: FSMContext, user: dict):
+    # Обрабатываем команды отмены
+    if message.text and message.text.strip() in ["/cancel", "❌ Отмена", "🔙 В меню", "/start", "Отменить рецепт"]:
+        await state.clear()
+        from keyboards.common import get_role_menu
+        await message.answer("❌ Создание рецепта отменено.", reply_markup=get_role_menu(user['role']))
+        return
+    
     drug_name = message.text.strip()
     data = await state.get_data()
     data.setdefault('items', []).append({'drug_name': drug_name, 'quantity': None})
@@ -92,7 +99,14 @@ async def process_drug_name(message: Message, state: FSMContext):
 
 
 @router.message(AddRecipeStates.waiting_for_quantity)
-async def process_quantity(message: Message, state: FSMContext):
+async def process_quantity(message: Message, state: FSMContext, user: dict):
+    # Обрабатываем команды отмены
+    if message.text and message.text.strip() in ["/cancel", "❌ Отмена", "🔙 В меню", "/start", "Отменить рецепт"]:
+        await state.clear()
+        from keyboards.common import get_role_menu
+        await message.answer("❌ Создание рецепта отменено.", reply_markup=get_role_menu(user['role']))
+        return
+    
     if not message.text:
         await message.answer("⚠️ Пожалуйста, введите количество:")
         return
@@ -122,6 +136,18 @@ async def process_quantity(message: Message, state: FSMContext):
         parse_mode="HTML"
     )
     await state.set_state(AddRecipeStates.waiting_for_more_items)
+
+
+@router.callback_query(F.data == "cancel_recipe_creation", AddRecipeStates.waiting_for_more_items)
+async def cancel_recipe_creation(callback: CallbackQuery, state: FSMContext, user: dict):
+    from keyboards.common import get_role_menu
+    await callback.message.delete()
+    await callback.message.answer(
+        "❌ Создание рецепта отменено",
+        reply_markup=get_role_menu(user['role'])
+    )
+    await state.clear()
+    await callback.answer()
 
 
 @router.callback_query(F.data == "add_more_item", AddRecipeStates.waiting_for_more_items)
@@ -315,8 +341,13 @@ async def confirm_recipe(callback: CallbackQuery, state: FSMContext, user: dict,
 
 
 @router.callback_query(F.data == "cancel_recipe", AddRecipeStates.waiting_for_confirmation)
-async def cancel_recipe(callback: CallbackQuery, state: FSMContext):
-    await callback.message.edit_text("❌ Создание рецепта отменено")
+async def cancel_recipe(callback: CallbackQuery, state: FSMContext, user: dict):
+    from keyboards.common import get_role_menu
+    await callback.message.delete()
+    await callback.message.answer(
+        "❌ Создание рецепта отменено",
+        reply_markup=get_role_menu(user['role'])
+    )
     await state.clear()
     await callback.answer()
 
