@@ -297,6 +297,9 @@ async def show_confirmation(message: Message | CallbackQuery, state: FSMContext,
     
     confirmation_text += "━━━━━━━━━━━━━━━━━━━━\n\nПодтвердите создание рецепта:"
     
+    # Устанавливаем состояние перед показом подтверждения
+    await state.set_state(AddRecipeStates.waiting_for_confirmation)
+    
     if isinstance(message, Message):
         await message.answer(confirmation_text, reply_markup=get_confirm_keyboard(), parse_mode="HTML")
     else:
@@ -305,6 +308,8 @@ async def show_confirmation(message: Message | CallbackQuery, state: FSMContext,
 
 @router.callback_query(F.data == "confirm_recipe", AddRecipeStates.waiting_for_confirmation)
 async def confirm_recipe(callback: CallbackQuery, state: FSMContext, user: dict, db_pool: Annotated[asyncpg.Pool, "db_pool"]):
+    logger = logging.getLogger(__name__)
+    
     # Сразу отвечаем на callback, чтобы убрать индикатор загрузки
     await callback.answer()
     
@@ -339,14 +344,14 @@ async def confirm_recipe(callback: CallbackQuery, state: FSMContext, user: dict,
         # Используем одну транзакцию для всех операций
         async with db_pool.acquire() as conn:
             async with conn.transaction():
-                # Создаем рецепт
+                # Создаем рецепт (comment может быть None, поэтому используем или пустую строку)
                 recipe_id = await conn.fetchval(
                     """
                     INSERT INTO recipes (doctor_id, duration_days, comment, status)
                     VALUES ($1, $2, $3, 'active')
                     RETURNING id
                     """,
-                    user['id'], duration_days, comment
+                    user['id'], duration_days, comment or None
                 )
                 
                 # Добавляем все элементы рецепта в одной транзакции
@@ -366,17 +371,22 @@ async def confirm_recipe(callback: CallbackQuery, state: FSMContext, user: dict,
                             quantity_value = int(quantity)
                         elif isinstance(quantity, str):
                             # Пытаемся извлечь число из строки
-                            numbers = re.findall(r'\d+', quantity)
+                            numbers = re.findall(r'\d+', str(quantity))
                             quantity_value = int(numbers[0]) if numbers else 0
                         else:
                             quantity_value = 0
-                    except (ValueError, TypeError):
+                    except (ValueError, TypeError) as e:
+                        logger.warning(f"Не удалось преобразовать quantity '{quantity}' в число: {e}")
                         quantity_value = 0
                     
-                    await conn.execute(
-                        "INSERT INTO recipe_items (recipe_id, drug_name, quantity) VALUES ($1, $2, $3)",
-                        recipe_id, drug_name, quantity_value
-                    )
+                    try:
+                        await conn.execute(
+                            "INSERT INTO recipe_items (recipe_id, drug_name, quantity) VALUES ($1, $2, $3)",
+                            recipe_id, drug_name, quantity_value
+                        )
+                    except Exception as e:
+                        logger.error(f"Ошибка при добавлении элемента рецепта: {e}")
+                        raise
         
         message_text = f"✅ <b>Рецепт успешно создан!</b>\n\n"
         if external_recipe_id:
@@ -386,7 +396,6 @@ async def confirm_recipe(callback: CallbackQuery, state: FSMContext, user: dict,
         
         await callback.message.edit_text(message_text, parse_mode="HTML")
     except Exception as e:
-        logger = logging.getLogger(__name__)
         logger.error(f"Ошибка при создании рецепта: {e}", exc_info=True)
         await callback.message.edit_text(
             f"❌ Ошибка при создании рецепта: {str(e)}\n\n"
