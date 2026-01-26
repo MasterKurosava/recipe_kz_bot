@@ -286,7 +286,6 @@ async def admin_process_new_quantity(message: Message, state: FSMContext, user: 
         await message.answer("⚠️ Пожалуйста, введите количество:")
         return
     
-    # Позволяем вводить любой текст, включая буквы
     new_quantity = message.text.strip()
     
     data = await state.get_data()

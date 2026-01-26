@@ -103,7 +103,7 @@ async def edit_quantity_select(callback: CallbackQuery, state: FSMContext, db_po
 
 
 @router.callback_query(F.data.startswith("edit_item_"))
-async def edit_item_start(callback: CallbackQuery, state: FSMContext):
+async def edit_item_start(callback: CallbackQuery, state: FSMContext, user: dict):
     parts = callback.data.split("_")
     recipe_id = int(parts[2])
     item_id = int(parts[3])
@@ -120,7 +120,6 @@ async def process_new_quantity(message: Message, state: FSMContext, user: dict, 
         await message.answer("⚠️ Пожалуйста, введите количество:")
         return
     
-    # Позволяем вводить любой текст, включая буквы
     new_quantity = message.text.strip()
     
     data = await state.get_data()

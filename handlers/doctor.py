@@ -38,7 +38,6 @@ async def cmd_add_recipe(message: Message, state: FSMContext, user: dict):
 
 @router.message(AddRecipeStates.waiting_for_recipe_id)
 async def process_recipe_id(message: Message, state: FSMContext, db_pool: Annotated[asyncpg.Pool, "db_pool"]):
-    # Обрабатываем команды отмены
     if message.text and message.text.strip() in ["/cancel", "❌ Отмена", "🔙 В меню", "/start"]:
         await state.clear()
         from keyboards.common import get_role_menu
@@ -80,7 +79,6 @@ async def process_recipe_id(message: Message, state: FSMContext, db_pool: Annota
 
 @router.message(AddRecipeStates.waiting_for_drug_name)
 async def process_drug_name(message: Message, state: FSMContext, user: dict):
-    # Обрабатываем команды отмены
     if message.text and message.text.strip() in ["/cancel", "❌ Отмена", "🔙 В меню", "/start", "Отменить рецепт"]:
         await state.clear()
         from keyboards.common import get_role_menu
@@ -102,7 +100,6 @@ async def process_drug_name(message: Message, state: FSMContext, user: dict):
 
 @router.message(AddRecipeStates.waiting_for_quantity)
 async def process_quantity(message: Message, state: FSMContext, user: dict):
-    # Обрабатываем команды отмены
     if message.text and message.text.strip() in ["/cancel", "❌ Отмена", "🔙 В меню", "/start", "Отменить рецепт"]:
         await state.clear()
         from keyboards.common import get_role_menu
@@ -119,7 +116,6 @@ async def process_quantity(message: Message, state: FSMContext, user: dict):
         await message.answer("⚠️ Пожалуйста, введите количество:")
         return
     
-    # Позволяем вводить любой текст, включая буквы
     quantity = text
     
     data = await state.get_data()
@@ -297,7 +293,6 @@ async def show_confirmation(message: Message | CallbackQuery, state: FSMContext,
     
     confirmation_text += "━━━━━━━━━━━━━━━━━━━━\n\nПодтвердите создание рецепта:"
     
-    # Устанавливаем состояние перед показом подтверждения
     await state.set_state(AddRecipeStates.waiting_for_confirmation)
     
     if isinstance(message, Message):
@@ -310,10 +305,7 @@ async def show_confirmation(message: Message | CallbackQuery, state: FSMContext,
 async def confirm_recipe(callback: CallbackQuery, state: FSMContext, user: dict, db_pool: Annotated[asyncpg.Pool, "db_pool"]):
     logger = logging.getLogger(__name__)
     
-    # Сразу отвечаем на callback, чтобы убрать индикатор загрузки
     await callback.answer()
-    
-    # Показываем сообщение о сохранении
     await callback.message.edit_text("⏳ Сохранение рецепта...")
     
     data = await state.get_data()
@@ -334,31 +326,34 @@ async def confirm_recipe(callback: CallbackQuery, state: FSMContext, user: dict,
             await state.clear()
             return
         
-        # Добавляем внешний ID рецепта в начало комментария, если он есть
-        if external_recipe_id:
-            if comment:
-                comment = f"ID: {external_recipe_id}\n{comment}"
-            else:
-                comment = f"ID: {external_recipe_id}"
+        if not external_recipe_id:
+            await callback.message.edit_text("❌ Ошибка: не указан ID рецепта")
+            await state.clear()
+            return
         
-        # Преобразуем comment в строку или None (не пустую строку)
+        if await is_duplicate(external_recipe_id, db_pool):
+            await callback.message.edit_text(
+                f"❌ <b>Ошибка!</b>\n\n"
+                f"Рецепт с ID <code>{external_recipe_id}</code> уже существует.\n\n"
+                "🔒 Повторная выдача запрещена.",
+                parse_mode="HTML"
+            )
+            await state.clear()
+            return
+        
         comment_value = comment if comment else None
         
-        # Используем одну транзакцию для всех операций
         async with db_pool.acquire() as conn:
             async with conn.transaction():
-                # Создаем рецепт
-                # Явно указываем типы: user['id'] (int), duration_days (int), comment (str или None)
                 recipe_id = await conn.fetchval(
                     """
-                    INSERT INTO recipes (doctor_id, duration_days, comment, status)
-                    VALUES ($1::integer, $2::integer, $3::text, 'active')
+                    INSERT INTO recipes (doctor_id, duration_days, comment, status, external_id)
+                    VALUES ($1::integer, $2::integer, $3::text, 'active', $4::text)
                     RETURNING id
                     """,
-                    int(user['id']), int(duration_days), comment_value
+                    int(user['id']), int(duration_days), comment_value, external_recipe_id
                 )
                 
-                # Добавляем все элементы рецепта в одной транзакции
                 for item in items:
                     drug_name = item.get('drug_name', '')
                     quantity = item.get('quantity', '')
@@ -366,15 +361,12 @@ async def confirm_recipe(callback: CallbackQuery, state: FSMContext, user: dict,
                     if not drug_name:
                         continue
                     
-                    # Пытаемся преобразовать quantity в число, если не получается - используем 0
-                    # Это нужно, так как в БД поле quantity имеет тип INTEGER
                     try:
                         if quantity is None or quantity == '':
                             quantity_value = 0
                         elif isinstance(quantity, (int, float)):
                             quantity_value = int(quantity)
                         elif isinstance(quantity, str):
-                            # Пытаемся извлечь число из строки
                             numbers = re.findall(r'\d+', str(quantity))
                             quantity_value = int(numbers[0]) if numbers else 0
                         else:
@@ -393,9 +385,7 @@ async def confirm_recipe(callback: CallbackQuery, state: FSMContext, user: dict,
                         raise
         
         message_text = f"✅ <b>Рецепт успешно создан!</b>\n\n"
-        if external_recipe_id:
-            message_text += f"🆔 <b>Внешний ID рецепта:</b> <code>{external_recipe_id}</code>\n"
-        message_text += f"🆔 <b>ID в базе:</b> <code>{recipe_id}</code>\n\n"
+        message_text += f"🆔 <b>ID рецепта:</b> <code>{external_recipe_id}</code>\n\n"
         message_text += "Рецепт сохранён в базу данных."
         
         await callback.message.edit_text(message_text, parse_mode="HTML")
@@ -556,7 +546,6 @@ async def doctor_process_new_quantity(message: Message, state: FSMContext, user:
         await message.answer("⚠️ Пожалуйста, введите количество:")
         return
     
-    # Позволяем вводить любой текст, включая буквы
     new_quantity = message.text.strip()
     
     data = await state.get_data()
