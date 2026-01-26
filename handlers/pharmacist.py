@@ -116,14 +116,12 @@ async def edit_item_start(callback: CallbackQuery, state: FSMContext):
 
 @router.message(EditQuantityStates.waiting_for_new_quantity)
 async def process_new_quantity(message: Message, state: FSMContext, user: dict, db_pool: Annotated[asyncpg.Pool, "db_pool"]):
-    try:
-        new_quantity = int(message.text.strip())
-        if new_quantity <= 0:
-            await message.answer("❌ Количество должно быть положительным числом")
-            return
-    except ValueError:
-        await message.answer("❌ Введите число")
+    if not message.text:
+        await message.answer("⚠️ Пожалуйста, введите количество:")
         return
+    
+    # Позволяем вводить любой текст, включая буквы
+    new_quantity = message.text.strip()
     
     data = await state.get_data()
     recipe_id = data['recipe_id']
@@ -133,10 +131,8 @@ async def process_new_quantity(message: Message, state: FSMContext, user: dict, 
         await update_recipe_item_quantity(item_id, new_quantity, user['id'], recipe_id, db_pool)
         
         recipe = await get_recipe_by_id(recipe_id, db_pool)
-        items_text = "\n".join([
-            f"• {item['drug_name']} - {item['quantity']} шт."
-            for item in recipe['items']
-        ])
+        from utils.recipe_formatter import format_recipe_items
+        items_text = format_recipe_items(recipe['items'])
         
         await message.answer(
             f"✅ <b>Количество обновлено!</b>\n\n"

@@ -5,22 +5,28 @@ from datetime import datetime, timedelta
 
 async def is_duplicate(recipe_id: str, pool: asyncpg.Pool) -> bool:
     """Проверяет, существует ли рецепт с таким внешним ID в комментарии или как числовой ID"""
-    async with pool.acquire() as conn:
-        # Проверяем как числовой ID
-        try:
-            numeric_id = int(recipe_id)
-            row = await conn.fetchrow("SELECT id FROM recipes WHERE id = $1", numeric_id)
-            if row:
-                return True
-        except ValueError:
-            pass
-        
-        # Проверяем как внешний ID в комментарии (если внешний ID хранится в начале комментария)
-        row = await conn.fetchrow(
-            "SELECT id FROM recipes WHERE comment LIKE $1",
-            f"{recipe_id}%"
-        )
-        return row is not None
+    try:
+        async with pool.acquire() as conn:
+            # Проверяем как числовой ID
+            try:
+                numeric_id = int(recipe_id)
+                row = await conn.fetchrow("SELECT id FROM recipes WHERE id = $1", numeric_id)
+                if row:
+                    return True
+            except ValueError:
+                pass
+            
+            # Проверяем как внешний ID в комментарии (если внешний ID хранится в начале комментария)
+            # Ищем комментарии, которые начинаются с "ID: {recipe_id}" или содержат его
+            row = await conn.fetchrow(
+                "SELECT id FROM recipes WHERE comment IS NOT NULL AND (comment LIKE $1 OR comment LIKE $2)",
+                f"ID: {recipe_id}%",
+                f"%ID: {recipe_id}%"
+            )
+            return row is not None
+    except Exception:
+        # В случае ошибки возвращаем False, чтобы не блокировать создание рецепта
+        return False
 
 
 async def create_recipe(doctor_id: int, duration_days: int, comment: Optional[str], pool: asyncpg.Pool) -> int:
@@ -36,11 +42,13 @@ async def create_recipe(doctor_id: int, duration_days: int, comment: Optional[st
         return recipe_id
 
 
-async def add_recipe_item(recipe_id: int, drug_name: str, quantity: int, pool: asyncpg.Pool) -> None:
+async def add_recipe_item(recipe_id: int, drug_name: str, quantity: str | int, pool: asyncpg.Pool) -> None:
     async with pool.acquire() as conn:
+        # Преобразуем quantity в строку для сохранения
+        quantity_str = str(quantity) if quantity is not None else ""
         await conn.execute(
-            "INSERT INTO recipe_items (recipe_id, drug_name, quantity) VALUES ($1, $2, $3)",
-            recipe_id, drug_name, quantity
+            "INSERT INTO recipe_items (recipe_id, drug_name, quantity) VALUES ($1, $2, $3::text)",
+            recipe_id, drug_name, quantity_str
         )
 
 
@@ -127,7 +135,7 @@ async def mark_recipe_as_used(recipe_id: int, pharmacist_id: int, pool: asyncpg.
             )
 
 
-async def update_recipe_item_quantity(item_id: int, new_quantity: int, pharmacist_id: int, recipe_id: int, pool: asyncpg.Pool) -> None:
+async def update_recipe_item_quantity(item_id: int, new_quantity: str | int, pharmacist_id: int, recipe_id: int, pool: asyncpg.Pool) -> None:
     import json
     async with pool.acquire() as conn:
         async with conn.transaction():
@@ -136,9 +144,11 @@ async def update_recipe_item_quantity(item_id: int, new_quantity: int, pharmacis
                 item_id
             )
             
+            # Преобразуем new_quantity в строку
+            new_quantity_str = str(new_quantity) if new_quantity is not None else ""
             await conn.execute(
                 "UPDATE recipe_items SET quantity = $1 WHERE id = $2",
-                new_quantity, item_id
+                new_quantity_str, item_id
             )
             
             changes = {

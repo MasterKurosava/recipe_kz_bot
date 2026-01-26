@@ -36,20 +36,36 @@ async def cmd_add_recipe(message: Message, state: FSMContext, user: dict):
 
 @router.message(AddRecipeStates.waiting_for_recipe_id)
 async def process_recipe_id(message: Message, state: FSMContext, db_pool: Annotated[asyncpg.Pool, "db_pool"]):
+    # Обрабатываем команды отмены
+    if message.text and message.text.strip() in ["/cancel", "❌ Отмена", "🔙 В меню", "/start"]:
+        await state.clear()
+        from keyboards.common import get_role_menu
+        await message.answer("❌ Добавление рецепта отменено.", reply_markup=get_role_menu("doctor"))
+        return
+    
+    if not message.text:
+        await message.answer("⚠️ Пожалуйста, введите ID рецепта текстом:")
+        return
+    
     recipe_id = message.text.strip()
     
     if not recipe_id:
         await message.answer("⚠️ Пожалуйста, введите корректный ID рецепта:")
         return
     
-    if await is_duplicate(recipe_id, db_pool):
-        await message.answer(
-            f"❌ <b>Ошибка!</b>\n\n"
-            f"Рецепт с ID <code>{recipe_id}</code> уже зарегистрирован в базе.\n\n"
-            "🔒 Повторная выдача запрещена.",
-            parse_mode="HTML"
-        )
-        await state.clear()
+    try:
+        is_dup = await is_duplicate(recipe_id, db_pool)
+        if is_dup:
+            await message.answer(
+                f"❌ <b>Ошибка!</b>\n\n"
+                f"Рецепт с ID <code>{recipe_id}</code> уже зарегистрирован в базе.\n\n"
+                "🔒 Повторная выдача запрещена.",
+                parse_mode="HTML"
+            )
+            await state.clear()
+            return
+    except Exception as e:
+        await message.answer(f"❌ Ошибка при проверке ID рецепта: {str(e)}")
         return
     
     await state.update_data(recipe_id=recipe_id)
@@ -77,14 +93,18 @@ async def process_drug_name(message: Message, state: FSMContext):
 
 @router.message(AddRecipeStates.waiting_for_quantity)
 async def process_quantity(message: Message, state: FSMContext):
-    try:
-        quantity = int(message.text.strip())
-        if quantity <= 0:
-            await message.answer("❌ Количество должно быть положительным числом")
-            return
-    except ValueError:
-        await message.answer("❌ Введите число")
+    if not message.text:
+        await message.answer("⚠️ Пожалуйста, введите количество:")
         return
+    
+    text = message.text.strip()
+    
+    if not text:
+        await message.answer("⚠️ Пожалуйста, введите количество:")
+        return
+    
+    # Позволяем вводить любой текст, включая буквы
+    quantity = text
     
     data = await state.get_data()
     if data['items']:
@@ -432,14 +452,12 @@ async def doctor_edit_item_start(callback: CallbackQuery, state: FSMContext, use
 
 @router.message(DoctorRecipeStates.waiting_for_edit_quantity)
 async def doctor_process_new_quantity(message: Message, state: FSMContext, user: dict, db_pool: Annotated[asyncpg.Pool, "db_pool"]):
-    try:
-        new_quantity = int(message.text.strip())
-        if new_quantity <= 0:
-            await message.answer("❌ Количество должно быть положительным числом")
-            return
-    except ValueError:
-        await message.answer("❌ Введите число")
+    if not message.text:
+        await message.answer("⚠️ Пожалуйста, введите количество:")
         return
+    
+    # Позволяем вводить любой текст, включая буквы
+    new_quantity = message.text.strip()
     
     data = await state.get_data()
     recipe_id = data['recipe_id']

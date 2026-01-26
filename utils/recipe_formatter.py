@@ -10,10 +10,16 @@ def format_recipe_status(recipe: Dict) -> tuple[str, str]:
 
 
 def format_recipe_items(items: List[Dict]) -> str:
-    return "\n".join([
-        f"• {item['drug_name']} - {item['quantity']} шт."
-        for item in items
-    ])
+    result = []
+    for item in items:
+        quantity = item.get('quantity', '?')
+        # Если quantity - это число, добавляем "шт.", иначе просто выводим как есть
+        try:
+            int(quantity)
+            result.append(f"• {item['drug_name']} - {quantity} шт.")
+        except (ValueError, TypeError):
+            result.append(f"• {item['drug_name']} - {quantity}")
+    return "\n".join(result)
 
 
 def format_doctor_name(recipe: Dict) -> str:

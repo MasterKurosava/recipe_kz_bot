@@ -282,14 +282,12 @@ async def admin_edit_item_start(callback: CallbackQuery, state: FSMContext):
 
 @router.message(EditQuantityStates.waiting_for_new_quantity)
 async def admin_process_new_quantity(message: Message, state: FSMContext, user: dict, db_pool: Annotated[asyncpg.Pool, "db_pool"]):
-    try:
-        new_quantity = int(message.text.strip())
-        if new_quantity <= 0:
-            await message.answer("❌ Количество должно быть положительным числом")
-            return
-    except ValueError:
-        await message.answer("❌ Введите число")
+    if not message.text:
+        await message.answer("⚠️ Пожалуйста, введите количество:")
         return
+    
+    # Позволяем вводить любой текст, включая буквы
+    new_quantity = message.text.strip()
     
     data = await state.get_data()
     recipe_id = data['recipe_id']
