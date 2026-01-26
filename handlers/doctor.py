@@ -341,17 +341,21 @@ async def confirm_recipe(callback: CallbackQuery, state: FSMContext, user: dict,
             else:
                 comment = f"ID: {external_recipe_id}"
         
+        # Преобразуем comment в строку или None (не пустую строку)
+        comment_value = comment if comment else None
+        
         # Используем одну транзакцию для всех операций
         async with db_pool.acquire() as conn:
             async with conn.transaction():
-                # Создаем рецепт (comment может быть None, поэтому используем или пустую строку)
+                # Создаем рецепт
+                # Явно указываем типы: user['id'] (int), duration_days (int), comment (str или None)
                 recipe_id = await conn.fetchval(
                     """
                     INSERT INTO recipes (doctor_id, duration_days, comment, status)
-                    VALUES ($1, $2, $3, 'active')
+                    VALUES ($1::integer, $2::integer, $3::text, 'active')
                     RETURNING id
                     """,
-                    user['id'], duration_days, comment or None
+                    int(user['id']), int(duration_days), comment_value
                 )
                 
                 # Добавляем все элементы рецепта в одной транзакции
@@ -381,8 +385,8 @@ async def confirm_recipe(callback: CallbackQuery, state: FSMContext, user: dict,
                     
                     try:
                         await conn.execute(
-                            "INSERT INTO recipe_items (recipe_id, drug_name, quantity) VALUES ($1, $2, $3)",
-                            recipe_id, drug_name, quantity_value
+                            "INSERT INTO recipe_items (recipe_id, drug_name, quantity) VALUES ($1::integer, $2::text, $3::integer)",
+                            int(recipe_id), str(drug_name), int(quantity_value)
                         )
                     except Exception as e:
                         logger.error(f"Ошибка при добавлении элемента рецепта: {e}")
