@@ -533,9 +533,9 @@ async def process_doctor_recipe_id(message: Message, state: FSMContext, user: di
 @router.callback_query(F.data.startswith("edit_quantity_"))
 async def doctor_edit_quantity_select(callback: CallbackQuery, state: FSMContext, user: dict, db_pool: Annotated[asyncpg.Pool, "db_pool"]):
     # Проверяем, что пользователь - врач или админ
+    # Если нет - пропускаем, чтобы сработал обработчик фармацевта
     if user.get('role') not in ['doctor', 'admin']:
-        await callback.answer("❌ Доступ запрещён", show_alert=True)
-        return
+        return  # Пропускаем, не блокируем
     
     recipe_id = int(callback.data.split("_")[-1])
     
@@ -566,9 +566,9 @@ async def doctor_edit_quantity_select(callback: CallbackQuery, state: FSMContext
 @router.callback_query(F.data.startswith("edit_item_"))
 async def doctor_edit_item_start(callback: CallbackQuery, state: FSMContext, user: dict, db_pool: Annotated[asyncpg.Pool, "db_pool"]):
     # Проверяем, что пользователь - врач или админ
+    # Если нет - пропускаем, чтобы сработал обработчик фармацевта
     if user.get('role') not in ['doctor', 'admin']:
-        await callback.answer("❌ Доступ запрещён", show_alert=True)
-        return
+        return  # Пропускаем, не блокируем
     
     parts = callback.data.split("_")
     recipe_id = int(parts[2])

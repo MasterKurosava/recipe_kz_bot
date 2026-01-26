@@ -87,9 +87,11 @@ async def main():
     pharmacist.router.callback_query.middleware(RoleCheckMiddleware(['admin', 'pharmacist']))
 
     dp.include_router(common.router)
-    dp.include_router(doctor.router)  # Врач раньше, чтобы его обработчики срабатывали первыми
-    dp.include_router(admin.router)
+    # Порядок важен: фармацевт раньше врача для обработчиков edit_quantity/edit_item,
+    # чтобы фармацевты могли редактировать рецепты
     dp.include_router(pharmacist.router)
+    dp.include_router(doctor.router)
+    dp.include_router(admin.router)
 
     logger.info("Бот запущен")
     try:

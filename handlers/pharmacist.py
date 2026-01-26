@@ -65,6 +65,11 @@ async def process_recipe_id(message: Message, state: FSMContext, db_pool: Annota
 
 @router.callback_query(F.data.startswith("mark_used_"))
 async def mark_used_handler(callback: CallbackQuery, user: dict, db_pool: Annotated[asyncpg.Pool, "db_pool"]):
+    # Проверяем, что пользователь - фармацевт или админ
+    if user.get('role') not in ['pharmacist', 'admin']:
+        await callback.answer("❌ Доступ запрещён", show_alert=True)
+        return
+    
     recipe_id = int(callback.data.split("_")[-1])
     
     try:
@@ -85,6 +90,11 @@ async def mark_used_handler(callback: CallbackQuery, user: dict, db_pool: Annota
 
 @router.callback_query(F.data.startswith("edit_quantity_"))
 async def edit_quantity_select(callback: CallbackQuery, state: FSMContext, db_pool: Annotated[asyncpg.Pool, "db_pool"], user: dict):
+    # Проверяем, что пользователь - фармацевт или админ
+    if user.get('role') not in ['pharmacist', 'admin']:
+        await callback.answer("❌ Доступ запрещён", show_alert=True)
+        return
+    
     recipe_id = int(callback.data.split("_")[-1])
     
     recipe = await get_recipe_by_id(recipe_id, db_pool)
@@ -104,6 +114,11 @@ async def edit_quantity_select(callback: CallbackQuery, state: FSMContext, db_po
 
 @router.callback_query(F.data.startswith("edit_item_"))
 async def edit_item_start(callback: CallbackQuery, state: FSMContext, user: dict):
+    # Проверяем, что пользователь - фармацевт или админ
+    if user.get('role') not in ['pharmacist', 'admin']:
+        await callback.answer("❌ Доступ запрещён", show_alert=True)
+        return
+    
     parts = callback.data.split("_")
     recipe_id = int(parts[2])
     item_id = int(parts[3])
