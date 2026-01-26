@@ -4,6 +4,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from typing import Annotated
 import asyncpg
+import re
+import logging
 from services.recipe_service import create_recipe, add_recipe_item, get_recipe_by_id, get_recipes_by_doctor, update_recipe_item_quantity, is_duplicate
 from keyboards.common import get_duration_keyboard, get_recipe_items_actions_keyboard, get_confirm_keyboard, get_item_delete_keyboard, get_doctor_recipe_actions_keyboard, get_item_edit_keyboard
 from utils.recipe_formatter import format_recipe_detail, format_recipe_logs
@@ -303,11 +305,29 @@ async def show_confirmation(message: Message | CallbackQuery, state: FSMContext,
 
 @router.callback_query(F.data == "confirm_recipe", AddRecipeStates.waiting_for_confirmation)
 async def confirm_recipe(callback: CallbackQuery, state: FSMContext, user: dict, db_pool: Annotated[asyncpg.Pool, "db_pool"]):
+    # Сразу отвечаем на callback, чтобы убрать индикатор загрузки
+    await callback.answer()
+    
+    # Показываем сообщение о сохранении
+    await callback.message.edit_text("⏳ Сохранение рецепта...")
+    
     data = await state.get_data()
     
     try:
         external_recipe_id = data.get('recipe_id', '')
         comment = data.get('comment', '')
+        items = data.get('items', [])
+        duration_days = data.get('duration_days')
+        
+        if not items:
+            await callback.message.edit_text("❌ Ошибка: нет препаратов для сохранения")
+            await state.clear()
+            return
+        
+        if not duration_days:
+            await callback.message.edit_text("❌ Ошибка: не указана длительность рецепта")
+            await state.clear()
+            return
         
         # Добавляем внешний ID рецепта в начало комментария, если он есть
         if external_recipe_id:
@@ -316,15 +336,47 @@ async def confirm_recipe(callback: CallbackQuery, state: FSMContext, user: dict,
             else:
                 comment = f"ID: {external_recipe_id}"
         
-        recipe_id = await create_recipe(
-            user['id'],
-            data['duration_days'],
-            comment,
-            db_pool
-        )
-        
-        for item in data['items']:
-            await add_recipe_item(recipe_id, item['drug_name'], item['quantity'], db_pool)
+        # Используем одну транзакцию для всех операций
+        async with db_pool.acquire() as conn:
+            async with conn.transaction():
+                # Создаем рецепт
+                recipe_id = await conn.fetchval(
+                    """
+                    INSERT INTO recipes (doctor_id, duration_days, comment, status)
+                    VALUES ($1, $2, $3, 'active')
+                    RETURNING id
+                    """,
+                    user['id'], duration_days, comment
+                )
+                
+                # Добавляем все элементы рецепта в одной транзакции
+                for item in items:
+                    drug_name = item.get('drug_name', '')
+                    quantity = item.get('quantity', '')
+                    
+                    if not drug_name:
+                        continue
+                    
+                    # Пытаемся преобразовать quantity в число, если не получается - используем 0
+                    # Это нужно, так как в БД поле quantity имеет тип INTEGER
+                    try:
+                        if quantity is None or quantity == '':
+                            quantity_value = 0
+                        elif isinstance(quantity, (int, float)):
+                            quantity_value = int(quantity)
+                        elif isinstance(quantity, str):
+                            # Пытаемся извлечь число из строки
+                            numbers = re.findall(r'\d+', quantity)
+                            quantity_value = int(numbers[0]) if numbers else 0
+                        else:
+                            quantity_value = 0
+                    except (ValueError, TypeError):
+                        quantity_value = 0
+                    
+                    await conn.execute(
+                        "INSERT INTO recipe_items (recipe_id, drug_name, quantity) VALUES ($1, $2, $3)",
+                        recipe_id, drug_name, quantity_value
+                    )
         
         message_text = f"✅ <b>Рецепт успешно создан!</b>\n\n"
         if external_recipe_id:
@@ -334,10 +386,14 @@ async def confirm_recipe(callback: CallbackQuery, state: FSMContext, user: dict,
         
         await callback.message.edit_text(message_text, parse_mode="HTML")
     except Exception as e:
-        await callback.message.edit_text(f"❌ Ошибка при создании рецепта: {str(e)}")
+        logger = logging.getLogger(__name__)
+        logger.error(f"Ошибка при создании рецепта: {e}", exc_info=True)
+        await callback.message.edit_text(
+            f"❌ Ошибка при создании рецепта: {str(e)}\n\n"
+            "Попробуйте создать рецепт заново."
+        )
     
     await state.clear()
-    await callback.answer()
 
 
 @router.callback_query(F.data == "cancel_recipe", AddRecipeStates.waiting_for_confirmation)
