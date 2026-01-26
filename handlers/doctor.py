@@ -4,7 +4,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from typing import Annotated
 import asyncpg
-from services.recipe_service import create_recipe, add_recipe_item, get_recipe_by_id, get_recipes_by_doctor, update_recipe_item_quantity
+from services.recipe_service import create_recipe, add_recipe_item, get_recipe_by_id, get_recipes_by_doctor, update_recipe_item_quantity, is_duplicate
 from keyboards.common import get_duration_keyboard, get_recipe_items_actions_keyboard, get_confirm_keyboard, get_item_delete_keyboard, get_doctor_recipe_actions_keyboard, get_item_edit_keyboard
 from utils.recipe_formatter import format_recipe_detail, format_recipe_logs
 from utils.message_splitter import split_long_message
@@ -13,6 +13,7 @@ router = Router()
 
 
 class AddRecipeStates(StatesGroup):
+    waiting_for_recipe_id = State()
     waiting_for_drug_name = State()
     waiting_for_quantity = State()
     waiting_for_more_items = State()
@@ -27,6 +28,32 @@ async def cmd_add_recipe(message: Message, state: FSMContext, user: dict):
     await state.update_data(items=[])
     await message.answer(
         "➕ <b>Добавление нового рецепта</b>\n\n"
+        "📝 Введите ID рецепта:",
+        parse_mode="HTML"
+    )
+    await state.set_state(AddRecipeStates.waiting_for_recipe_id)
+
+
+@router.message(AddRecipeStates.waiting_for_recipe_id)
+async def process_recipe_id(message: Message, state: FSMContext, db_pool: Annotated[asyncpg.Pool, "db_pool"]):
+    recipe_id = message.text.strip()
+    
+    if not recipe_id:
+        await message.answer("⚠️ Пожалуйста, введите корректный ID рецепта:")
+        return
+    
+    if await is_duplicate(recipe_id, db_pool):
+        await message.answer(
+            f"❌ <b>Ошибка!</b>\n\n"
+            f"Рецепт с ID <code>{recipe_id}</code> уже зарегистрирован в базе.\n\n"
+            "🔒 Повторная выдача запрещена.",
+            parse_mode="HTML"
+        )
+        await state.clear()
+        return
+    
+    await state.update_data(recipe_id=recipe_id)
+    await message.answer(
         "📝 Введите название первого препарата:",
         parse_mode="HTML"
     )
@@ -233,22 +260,33 @@ async def confirm_recipe(callback: CallbackQuery, state: FSMContext, user: dict,
     data = await state.get_data()
     
     try:
+        external_recipe_id = data.get('recipe_id', '')
+        comment = data.get('comment', '')
+        
+        # Добавляем внешний ID рецепта в начало комментария, если он есть
+        if external_recipe_id:
+            if comment:
+                comment = f"ID: {external_recipe_id}\n{comment}"
+            else:
+                comment = f"ID: {external_recipe_id}"
+        
         recipe_id = await create_recipe(
             user['id'],
             data['duration_days'],
-            data.get('comment'),
+            comment,
             db_pool
         )
         
         for item in data['items']:
             await add_recipe_item(recipe_id, item['drug_name'], item['quantity'], db_pool)
         
-        await callback.message.edit_text(
-            f"✅ <b>Рецепт успешно создан!</b>\n\n"
-            f"🆔 <b>ID рецепта:</b> <code>{recipe_id}</code>\n\n"
-            "Рецепт сохранён в базу данных.",
-            parse_mode="HTML"
-        )
+        message_text = f"✅ <b>Рецепт успешно создан!</b>\n\n"
+        if external_recipe_id:
+            message_text += f"🆔 <b>Внешний ID рецепта:</b> <code>{external_recipe_id}</code>\n"
+        message_text += f"🆔 <b>ID в базе:</b> <code>{recipe_id}</code>\n\n"
+        message_text += "Рецепт сохранён в базу данных."
+        
+        await callback.message.edit_text(message_text, parse_mode="HTML")
     except Exception as e:
         await callback.message.edit_text(f"❌ Ошибка при создании рецепта: {str(e)}")
     

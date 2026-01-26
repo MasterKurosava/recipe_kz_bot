@@ -71,10 +71,14 @@ async def mark_used_handler(callback: CallbackQuery, user: dict, db_pool: Annota
         await mark_recipe_as_used(recipe_id, user['id'], db_pool)
         await callback.message.edit_text(
             f"✅ <b>Рецепт #{recipe_id} отмечен как списанный</b>",
+            reply_markup=None,
             parse_mode="HTML"
         )
     except Exception as e:
-        await callback.message.edit_text(f"❌ Ошибка: {str(e)}")
+        await callback.message.edit_text(
+            f"❌ Ошибка: {str(e)}",
+            reply_markup=None
+        )
     
     await callback.answer()
 

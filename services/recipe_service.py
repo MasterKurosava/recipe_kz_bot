@@ -3,6 +3,26 @@ from typing import Optional, List, Dict
 from datetime import datetime, timedelta
 
 
+async def is_duplicate(recipe_id: str, pool: asyncpg.Pool) -> bool:
+    """Проверяет, существует ли рецепт с таким внешним ID в комментарии или как числовой ID"""
+    async with pool.acquire() as conn:
+        # Проверяем как числовой ID
+        try:
+            numeric_id = int(recipe_id)
+            row = await conn.fetchrow("SELECT id FROM recipes WHERE id = $1", numeric_id)
+            if row:
+                return True
+        except ValueError:
+            pass
+        
+        # Проверяем как внешний ID в комментарии (если внешний ID хранится в начале комментария)
+        row = await conn.fetchrow(
+            "SELECT id FROM recipes WHERE comment LIKE $1",
+            f"{recipe_id}%"
+        )
+        return row is not None
+
+
 async def create_recipe(doctor_id: int, duration_days: int, comment: Optional[str], pool: asyncpg.Pool) -> int:
     async with pool.acquire() as conn:
         recipe_id = await conn.fetchval(
