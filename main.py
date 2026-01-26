@@ -72,6 +72,7 @@ async def main():
     
     from middlewares.unregistered import UnregisteredUserMiddleware
     dp.message.middleware(UnregisteredUserMiddleware())
+    dp.callback_query.middleware(UnregisteredUserMiddleware())
 
     common.router.message.middleware(RoleCheckMiddleware(['admin', 'doctor', 'pharmacist']))
     common.router.callback_query.middleware(RoleCheckMiddleware(['admin', 'doctor', 'pharmacist']))
