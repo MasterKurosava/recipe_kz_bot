@@ -84,7 +84,7 @@ async def mark_used_handler(callback: CallbackQuery, user: dict, db_pool: Annota
 
 
 @router.callback_query(F.data.startswith("edit_quantity_"))
-async def edit_quantity_select(callback: CallbackQuery, state: FSMContext, db_pool: Annotated[asyncpg.Pool, "db_pool"]):
+async def edit_quantity_select(callback: CallbackQuery, state: FSMContext, db_pool: Annotated[asyncpg.Pool, "db_pool"], user: dict):
     recipe_id = int(callback.data.split("_")[-1])
     
     recipe = await get_recipe_by_id(recipe_id, db_pool)
@@ -145,7 +145,7 @@ async def process_new_quantity(message: Message, state: FSMContext, user: dict, 
 
 
 @router.callback_query(F.data.startswith("back_recipe_"))
-async def back_to_recipe(callback: CallbackQuery, db_pool: Annotated[asyncpg.Pool, "db_pool"]):
+async def back_to_recipe(callback: CallbackQuery, db_pool: Annotated[asyncpg.Pool, "db_pool"], user: dict):
     recipe_id = int(callback.data.split("_")[-1])
     recipe = await get_recipe_by_id(recipe_id, db_pool)
     

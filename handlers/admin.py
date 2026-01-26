@@ -269,7 +269,7 @@ class EditQuantityStates(StatesGroup):
 
 
 @router.callback_query(F.data.startswith("edit_item_"))
-async def admin_edit_item_start(callback: CallbackQuery, state: FSMContext):
+async def admin_edit_item_start(callback: CallbackQuery, state: FSMContext, user: dict):
     parts = callback.data.split("_")
     recipe_id = int(parts[2])
     item_id = int(parts[3])
@@ -310,7 +310,7 @@ async def admin_process_new_quantity(message: Message, state: FSMContext, user: 
 
 
 @router.callback_query(F.data.startswith("back_recipe_"))
-async def admin_back_to_recipe(callback: CallbackQuery, db_pool: Annotated[asyncpg.Pool, "db_pool"]):
+async def admin_back_to_recipe(callback: CallbackQuery, db_pool: Annotated[asyncpg.Pool, "db_pool"], user: dict):
     recipe_id = int(callback.data.split("_")[-1])
     recipe = await get_recipe_by_id(recipe_id, db_pool)
     

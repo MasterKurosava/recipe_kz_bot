@@ -149,14 +149,14 @@ async def cancel_recipe_creation(callback: CallbackQuery, state: FSMContext, use
 
 
 @router.callback_query(F.data == "add_more_item", AddRecipeStates.waiting_for_more_items)
-async def add_more_item(callback: CallbackQuery, state: FSMContext):
+async def add_more_item(callback: CallbackQuery, state: FSMContext, user: dict):
     await callback.message.edit_text("📝 Введите название следующего препарата:")
     await state.set_state(AddRecipeStates.waiting_for_drug_name)
     await callback.answer()
 
 
 @router.callback_query(F.data == "delete_item", AddRecipeStates.waiting_for_more_items)
-async def delete_item_select(callback: CallbackQuery, state: FSMContext):
+async def delete_item_select(callback: CallbackQuery, state: FSMContext, user: dict):
     data = await state.get_data()
     if not data.get('items'):
         await callback.answer("Нет препаратов для удаления", show_alert=True)
@@ -170,7 +170,7 @@ async def delete_item_select(callback: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(F.data.startswith("delete_item_"), AddRecipeStates.waiting_for_more_items)
-async def delete_item_confirm(callback: CallbackQuery, state: FSMContext):
+async def delete_item_confirm(callback: CallbackQuery, state: FSMContext, user: dict):
     idx = int(callback.data.split("_")[-1])
     data = await state.get_data()
     
@@ -195,7 +195,7 @@ async def delete_item_confirm(callback: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(F.data == "done_delete", AddRecipeStates.waiting_for_more_items)
-async def done_delete(callback: CallbackQuery, state: FSMContext):
+async def done_delete(callback: CallbackQuery, state: FSMContext, user: dict):
     data = await state.get_data()
     items_text = "\n".join([
         f"• {item['drug_name']} - {item['quantity']}"
@@ -212,7 +212,7 @@ async def done_delete(callback: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(F.data == "continue_recipe", AddRecipeStates.waiting_for_more_items)
-async def continue_recipe(callback: CallbackQuery, state: FSMContext):
+async def continue_recipe(callback: CallbackQuery, state: FSMContext, user: dict):
     data = await state.get_data()
     if not data.get('items') or any(not item.get('quantity') for item in data['items']):
         await callback.answer("Добавьте хотя бы один препарат с количеством", show_alert=True)
@@ -242,7 +242,7 @@ async def process_comment(message: Message, state: FSMContext):
 
 
 @router.callback_query(F.data.startswith("duration_"), AddRecipeStates.waiting_for_duration)
-async def process_duration(callback: CallbackQuery, state: FSMContext):
+async def process_duration(callback: CallbackQuery, state: FSMContext, user: dict):
     duration_type = callback.data.split("_")[1]
     
     if duration_type == "custom":
