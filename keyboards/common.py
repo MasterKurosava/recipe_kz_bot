@@ -111,3 +111,19 @@ def get_item_edit_keyboard(recipe_id: int, items: list) -> InlineKeyboardMarkup:
         )])
     buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_recipe_{recipe_id}")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_recipes_pagination_keyboard(current_page: int, total_pages: int) -> InlineKeyboardMarkup:
+    """Создает клавиатуру пагинации для списка рецептов (2 кнопки в ряд)"""
+    buttons = []
+    
+    if total_pages > 1:
+        row = []
+        if current_page > 0:
+            row.append(InlineKeyboardButton(text="◀️ Назад", callback_data="recipes_page_prev"))
+        if current_page < total_pages - 1:
+            row.append(InlineKeyboardButton(text="Вперед ▶️", callback_data="recipes_page_next"))
+        if row:
+            buttons.append(row)
+    
+    return InlineKeyboardMarkup(inline_keyboard=buttons)

@@ -416,20 +416,24 @@ class DoctorRecipeStates(StatesGroup):
     waiting_for_edit_quantity = State()
 
 
-@router.message(F.text == "📋 Мои рецепты")
-async def cmd_my_recipes(message: Message, user: dict, db_pool: Annotated[asyncpg.Pool, "db_pool"]):
-    recipes = await get_recipes_by_doctor(user['id'], db_pool)
-    
-    if not recipes:
-        await message.answer("📭 У вас пока нет рецептов", parse_mode="HTML")
-        return
-    
-    text = f"📋 <b>Мои рецепты (всего {len(recipes)})</b>\n\n"
-    
+async def show_recipes_page(message: Message, recipes: list, page: int, edit_message: CallbackQuery = None, show_id_prompt: bool = False):
+    """Отображает страницу списка рецептов с пагинацией"""
     from utils.date_formatter import format_datetime, format_duration_days
     from utils.recipe_formatter import format_recipe_status
+    from keyboards.common import get_recipes_pagination_keyboard
     
-    for recipe in recipes[:20]:
+    RECIPES_PER_PAGE = 10
+    total_pages = (len(recipes) + RECIPES_PER_PAGE - 1) // RECIPES_PER_PAGE
+    
+    start_idx = page * RECIPES_PER_PAGE
+    end_idx = min(start_idx + RECIPES_PER_PAGE, len(recipes))
+    page_recipes = recipes[start_idx:end_idx]
+    
+    text = f"📋 <b>Мои рецепты</b>\n\n"
+    text += f"📊 Всего: {len(recipes)} | Страница {page + 1}/{total_pages}\n\n"
+    text += "━━━━━━━━━━━━━━━━━━━━\n\n"
+    
+    for recipe in page_recipes:
         status_emoji, status_text = format_recipe_status(recipe)
         duration_text = format_duration_days(recipe['duration_days'])
         
@@ -437,22 +441,56 @@ async def cmd_my_recipes(message: Message, user: dict, db_pool: Annotated[asyncp
         text += f"📅 Дата: {format_datetime(recipe['created_at'])}\n"
         text += f"⏱ Длительность: {duration_text}\n"
         text += f"📊 Статус: {status_text}\n"
-        text += f"💊 Препараты: {len(recipe['items'])}\n\n"
+        text += f"💊 Препараты: {len(recipe['items'])}\n"
+        text += "━━━━━━━━━━━━━━━━━━━━\n\n"
     
-    if len(recipes) > 20:
-        text += f"... и ещё {len(recipes) - 20} рецептов\n\n"
+    keyboard = get_recipes_pagination_keyboard(page, total_pages)
     
-    text += "📝 Введите ID рецепта для просмотра и редактирования:"
+    if edit_message:
+        await edit_message.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+        await edit_message.answer()
+    else:
+        await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+        if show_id_prompt:
+            await message.answer("📝 Введите ID рецепта для просмотра и редактирования:", parse_mode="HTML")
+
+
+@router.callback_query(F.data.startswith("recipes_page_"))
+async def handle_recipes_pagination(callback: CallbackQuery, state: FSMContext, user: dict):
+    """Обработчик пагинации списка рецептов"""
+    data = await state.get_data()
+    recipes = data.get('all_recipes', [])
+    current_page = data.get('current_page', 0)
     
-    chunks = split_long_message(text, max_length=4000)
-    for i, chunk in enumerate(chunks):
-        await message.answer(
-            chunk,
-            parse_mode="HTML" if i == 0 else None
-        )
+    RECIPES_PER_PAGE = 10
+    total_pages = (len(recipes) + RECIPES_PER_PAGE - 1) // RECIPES_PER_PAGE
     
-    await message.answer("📝 Введите ID рецепта для просмотра и редактирования:", parse_mode="HTML")
+    if callback.data == "recipes_page_prev":
+        new_page = max(0, current_page - 1)
+    elif callback.data == "recipes_page_next":
+        new_page = min(total_pages - 1, current_page + 1)
+    else:
+        await callback.answer()
+        return
+    
+    await state.update_data(current_page=new_page)
+    await show_recipes_page(None, recipes, new_page, edit_message=callback)
+
+
+@router.message(F.text == "📋 Мои рецепты")
+async def cmd_my_recipes(message: Message, state: FSMContext, user: dict, db_pool: Annotated[asyncpg.Pool, "db_pool"]):
+    recipes = await get_recipes_by_doctor(user['id'], db_pool)
+    
+    if not recipes:
+        await message.answer("📭 У вас пока нет рецептов", parse_mode="HTML")
+        return
+    
+    # Сохраняем все рецепты в state для пагинации
+    await state.update_data(all_recipes=recipes, current_page=0)
     await state.set_state(DoctorRecipeStates.waiting_for_recipe_id)
+    
+    # Показываем первую страницу
+    await show_recipes_page(message, recipes, 0, show_id_prompt=True)
 
 
 @router.message(DoctorRecipeStates.waiting_for_recipe_id)
@@ -494,6 +532,11 @@ async def process_doctor_recipe_id(message: Message, state: FSMContext, user: di
 
 @router.callback_query(F.data.startswith("edit_quantity_"))
 async def doctor_edit_quantity_select(callback: CallbackQuery, state: FSMContext, user: dict, db_pool: Annotated[asyncpg.Pool, "db_pool"]):
+    # Проверяем, что пользователь - врач или админ
+    if user.get('role') not in ['doctor', 'admin']:
+        await callback.answer("❌ Доступ запрещён", show_alert=True)
+        return
+    
     recipe_id = int(callback.data.split("_")[-1])
     
     recipe = await get_recipe_by_id(recipe_id, db_pool)
@@ -501,7 +544,8 @@ async def doctor_edit_quantity_select(callback: CallbackQuery, state: FSMContext
         await callback.answer("Рецепт не найден", show_alert=True)
         return
     
-    if recipe['doctor_id'] != user['id']:
+    # Если пользователь врач (не админ), проверяем, что это его рецепт
+    if user.get('role') == 'doctor' and recipe['doctor_id'] != user['id']:
         await callback.answer("❌ Вы можете редактировать только свои рецепты", show_alert=True)
         return
     
@@ -521,13 +565,23 @@ async def doctor_edit_quantity_select(callback: CallbackQuery, state: FSMContext
 
 @router.callback_query(F.data.startswith("edit_item_"))
 async def doctor_edit_item_start(callback: CallbackQuery, state: FSMContext, user: dict, db_pool: Annotated[asyncpg.Pool, "db_pool"]):
+    # Проверяем, что пользователь - врач или админ
+    if user.get('role') not in ['doctor', 'admin']:
+        await callback.answer("❌ Доступ запрещён", show_alert=True)
+        return
+    
     parts = callback.data.split("_")
     recipe_id = int(parts[2])
     item_id = int(parts[3])
     
     recipe = await get_recipe_by_id(recipe_id, db_pool)
-    if not recipe or recipe['doctor_id'] != user['id']:
-        await callback.answer("❌ Доступ запрещён", show_alert=True)
+    if not recipe:
+        await callback.answer("❌ Рецепт не найден", show_alert=True)
+        return
+    
+    # Если пользователь врач (не админ), проверяем, что это его рецепт
+    if user.get('role') == 'doctor' and recipe['doctor_id'] != user['id']:
+        await callback.answer("❌ Вы можете редактировать только свои рецепты", show_alert=True)
         return
     
     if recipe['status'] != 'active':
