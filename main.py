@@ -11,11 +11,9 @@ from handlers import common, admin, doctor, pharmacist
 from middlewares.database import DatabaseMiddleware
 from middlewares.logging import LoggingMiddleware
 from middlewares.role_check import RoleCheckMiddleware
+from middlewares.unregistered import UnregisteredUserMiddleware
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 
@@ -69,26 +67,19 @@ async def main():
     dp.callback_query.middleware(DatabaseMiddleware(pool))
     dp.message.middleware(LoggingMiddleware())
     dp.callback_query.middleware(LoggingMiddleware())
-    
-    from middlewares.unregistered import UnregisteredUserMiddleware
     dp.message.middleware(UnregisteredUserMiddleware())
     dp.callback_query.middleware(UnregisteredUserMiddleware())
 
     common.router.message.middleware(RoleCheckMiddleware(['admin', 'doctor', 'pharmacist']))
     common.router.callback_query.middleware(RoleCheckMiddleware(['admin', 'doctor', 'pharmacist']))
-    
     admin.router.message.middleware(RoleCheckMiddleware(['admin']))
     admin.router.callback_query.middleware(RoleCheckMiddleware(['admin']))
-    
     doctor.router.message.middleware(RoleCheckMiddleware(['admin', 'doctor']))
     doctor.router.callback_query.middleware(RoleCheckMiddleware(['admin', 'doctor']))
-    
     pharmacist.router.message.middleware(RoleCheckMiddleware(['admin', 'pharmacist']))
     pharmacist.router.callback_query.middleware(RoleCheckMiddleware(['admin', 'pharmacist']))
 
     dp.include_router(common.router)
-    # Порядок важен: фармацевт раньше врача для обработчиков edit_quantity/edit_item,
-    # чтобы фармацевты могли редактировать рецепты
     dp.include_router(pharmacist.router)
     dp.include_router(doctor.router)
     dp.include_router(admin.router)

@@ -1,5 +1,5 @@
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.filters import Command
@@ -8,8 +8,8 @@ import asyncpg
 from services.user_service import add_user, get_users_by_role, delete_user, get_user_by_id, get_user_by_telegram_id
 from services.recipe_service import get_recipe_by_id, get_recipe_logs, mark_recipe_as_used, update_recipe_item_quantity
 from keyboards.common import get_role_menu, get_recipe_actions_keyboard, get_item_edit_keyboard
-from utils.date_formatter import format_datetime
 from utils.recipe_formatter import format_recipe_detail, format_recipe_logs
+from utils.message_splitter import split_long_message
 
 router = Router()
 
@@ -24,22 +24,20 @@ class FindRecipeStates(StatesGroup):
     waiting_for_recipe_id = State()
 
 
+class EditQuantityStates(StatesGroup):
+    waiting_for_new_quantity = State()
+
+
 @router.message(F.text == "➕ Добавить пользователя")
 async def cmd_add_user(message: Message, state: FSMContext, user: dict):
-    await message.answer(
-        "➕ <b>Добавление пользователя</b>\n\n"
-        "📝 Введите user_id (число):",
-        parse_mode="HTML"
-    )
+    await message.answer("➕ <b>Добавление пользователя</b>\n\n📝 Введите user_id (число):", parse_mode="HTML")
     await state.set_state(AddUserStates.waiting_for_user_id)
 
 
 @router.message(AddUserStates.waiting_for_user_id)
 async def process_user_id(message: Message, state: FSMContext, db_pool: Annotated[asyncpg.Pool, "db_pool"], user: dict):
-    user_input = message.text.strip()
-    
     try:
-        telegram_id = int(user_input)
+        telegram_id = int(message.text.strip())
     except ValueError:
         await message.answer("❌ Пожалуйста, введите корректный user_id (число):")
         return
@@ -51,41 +49,25 @@ async def process_user_id(message: Message, state: FSMContext, db_pool: Annotate
         return
     
     await state.update_data(telegram_id=telegram_id)
-    
-    await message.answer(
-        "📝 Введите username пользователя (или отправьте 'пропустить' для пропуска):",
-        parse_mode="HTML"
-    )
+    await message.answer("📝 Введите username пользователя (или отправьте 'пропустить' для пропуска):", parse_mode="HTML")
     await state.set_state(AddUserStates.waiting_for_username)
 
 
 @router.message(AddUserStates.waiting_for_username)
 async def process_username(message: Message, state: FSMContext, user: dict):
     user_input = message.text.strip().lower()
-    
-    username = None
-    if user_input not in ['пропустить', 'skip', 'нет']:
-        username = message.text.strip().replace('@', '')
+    username = None if user_input in ['пропустить', 'skip', 'нет'] else message.text.strip().replace('@', '')
     
     await state.update_data(username=username)
-    
     data = await state.get_data()
-    telegram_id = data['telegram_id']
     
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="👨‍⚕️ Врач", callback_data="role_doctor"),
-                InlineKeyboardButton(text="💊 Фармацевт", callback_data="role_pharmacist")
-            ]
-        ]
-    )
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="👨‍⚕️ Врач", callback_data="role_doctor"),
+        InlineKeyboardButton(text="💊 Фармацевт", callback_data="role_pharmacist")
+    ]])
     
     await message.answer(
-        f"✅ Выберите роль для пользователя:\n\n"
-        f"User ID: <code>{telegram_id}</code>\n"
-        f"Username: @{username if username else 'не указан'}",
+        f"✅ Выберите роль для пользователя:\n\nUser ID: <code>{data['telegram_id']}</code>\nUsername: @{username if username else 'не указан'}",
         reply_markup=keyboard,
         parse_mode="HTML"
     )
@@ -98,18 +80,8 @@ async def process_role_selection(callback: CallbackQuery, state: FSMContext, db_
     data = await state.get_data()
     
     try:
-        await add_user(
-            data['telegram_id'],
-            data.get('username'),
-            None,
-            role,
-            db_pool
-        )
-        await callback.message.edit_text(
-            f"✅ Пользователь успешно добавлен с ролью: {role}\n\n"
-            f"User ID: {data['telegram_id']}\n"
-            f"Username: @{data.get('username') or 'не указан'}"
-        )
+        await add_user(data['telegram_id'], data.get('username'), None, role, db_pool)
+        await callback.message.edit_text(f"✅ Пользователь успешно добавлен с ролью: {role}\n\nUser ID: {data['telegram_id']}\nUsername: @{data.get('username') or 'не указан'}")
     except Exception as e:
         await callback.message.edit_text(f"❌ Ошибка: {str(e)}")
     
@@ -122,23 +94,15 @@ async def cmd_list_users(message: Message, user: dict, db_pool: Annotated[asyncp
     doctors = await get_users_by_role('doctor', db_pool)
     pharmacists = await get_users_by_role('pharmacist', db_pool)
     
-    from utils.message_splitter import split_long_message
-    
-    text = "👥 <b>Список пользователей</b>\n\n"
-    
-    text += "👨‍⚕️ <b>Врачи:</b>\n"
+    text = "👥 <b>Список пользователей</b>\n\n👨‍⚕️ <b>Врачи:</b>\n"
     if doctors:
-        for doc in doctors:
-            username = doc.get('username') or 'N/A'
-            text += f"• ID: {doc['id']} | User ID: {doc['telegram_id']} | @{username}\n"
+        text += "\n".join([f"• ID: {doc['id']} | User ID: {doc['telegram_id']} | @{doc.get('username') or 'N/A'}" for doc in doctors])
     else:
         text += "Нет врачей\n"
     
     text += "\n💊 <b>Фармацевты:</b>\n"
     if pharmacists:
-        for pharm in pharmacists:
-            username = pharm.get('username') or 'N/A'
-            text += f"• ID: {pharm['id']} | User ID: {pharm['telegram_id']} | @{username}\n"
+        text += "\n".join([f"• ID: {pharm['id']} | User ID: {pharm['telegram_id']} | @{pharm.get('username') or 'N/A'}" for pharm in pharmacists])
     else:
         text += "Нет фармацевтов\n"
     
@@ -146,10 +110,7 @@ async def cmd_list_users(message: Message, user: dict, db_pool: Annotated[asyncp
     
     chunks = split_long_message(text, max_length=4000)
     for i, chunk in enumerate(chunks):
-        await message.answer(
-            chunk,
-            parse_mode="HTML" if i == 0 else None
-        )
+        await message.answer(chunk, parse_mode="HTML" if i == 0 else None)
 
 
 @router.message(Command("delete_user"))
@@ -170,14 +131,8 @@ async def cmd_delete_user(message: Message, user: dict, db_pool: Annotated[async
             await message.answer("❌ Нельзя удалить администратора")
             return
         
-        success = await delete_user(user_id, db_pool)
-        if success:
-            await message.answer(
-                f"✅ Пользователь удалён\n\n"
-                f"ID: {user_id}\n"
-                f"User ID: {target_user['telegram_id']}\n"
-                f"Роль: {target_user['role']}"
-            )
+        if await delete_user(user_id, db_pool):
+            await message.answer(f"✅ Пользователь удалён\n\nID: {user_id}\nUser ID: {target_user['telegram_id']}\nРоль: {target_user['role']}")
         else:
             await message.answer("❌ Ошибка при удалении")
     except ValueError:
@@ -186,11 +141,7 @@ async def cmd_delete_user(message: Message, user: dict, db_pool: Annotated[async
 
 @router.message(F.text == "🔍 Найти рецепт")
 async def cmd_find_recipe(message: Message, state: FSMContext, user: dict):
-    await message.answer(
-        "🔍 <b>Поиск рецепта</b>\n\n"
-        "📝 Введите ID рецепта:",
-        parse_mode="HTML"
-    )
+    await message.answer("🔍 <b>Поиск рецепта</b>\n\n📝 Введите ID рецепта:", parse_mode="HTML")
     await state.set_state(FindRecipeStates.waiting_for_recipe_id)
 
 
@@ -212,15 +163,10 @@ async def process_find_recipe_id(message: Message, state: FSMContext, db_pool: A
     recipe_text = format_recipe_detail(recipe, recipe_id)
     
     if recipe['status'] == 'active':
-        await message.answer(
-            recipe_text,
-            reply_markup=get_recipe_actions_keyboard(recipe_id),
-            parse_mode="HTML"
-        )
+        await message.answer(recipe_text, reply_markup=get_recipe_actions_keyboard(recipe_id), parse_mode="HTML")
     else:
         logs = await get_recipe_logs(recipe_id, db_pool)
-        recipe_text += format_recipe_logs(logs)
-        await message.answer(recipe_text, parse_mode="HTML")
+        await message.answer(recipe_text + format_recipe_logs(logs), parse_mode="HTML")
     
     await state.clear()
 
@@ -231,16 +177,9 @@ async def admin_mark_used_handler(callback: CallbackQuery, user: dict, db_pool: 
     
     try:
         await mark_recipe_as_used(recipe_id, user['id'], db_pool)
-        await callback.message.edit_text(
-            f"✅ <b>Рецепт #{recipe_id} отмечен как списанный</b>",
-            reply_markup=None,
-            parse_mode="HTML"
-        )
+        await callback.message.edit_text(f"✅ <b>Рецепт #{recipe_id} отмечен как списанный</b>", reply_markup=None, parse_mode="HTML")
     except Exception as e:
-        await callback.message.edit_text(
-            f"❌ Ошибка: {str(e)}",
-            reply_markup=None
-        )
+        await callback.message.edit_text(f"❌ Ошибка: {str(e)}", reply_markup=None)
     
     await callback.answer()
 
@@ -248,24 +187,15 @@ async def admin_mark_used_handler(callback: CallbackQuery, user: dict, db_pool: 
 @router.callback_query(F.data.startswith("edit_quantity_"))
 async def admin_edit_quantity_select(callback: CallbackQuery, state: FSMContext, db_pool: Annotated[asyncpg.Pool, "db_pool"], user: dict):
     recipe_id = int(callback.data.split("_")[-1])
-    
     recipe = await get_recipe_by_id(recipe_id, db_pool)
+    
     if not recipe:
         await callback.answer("Рецепт не найден", show_alert=True)
         return
     
     await state.update_data(recipe_id=recipe_id)
-    
-    await callback.message.edit_text(
-        "✏️ <b>Выберите препарат для изменения количества:</b>",
-        reply_markup=get_item_edit_keyboard(recipe_id, recipe['items']),
-        parse_mode="HTML"
-    )
+    await callback.message.edit_text("✏️ <b>Выберите препарат для изменения количества:</b>", reply_markup=get_item_edit_keyboard(recipe_id, recipe['items']), parse_mode="HTML")
     await callback.answer()
-
-
-class EditQuantityStates(StatesGroup):
-    waiting_for_new_quantity = State()
 
 
 @router.callback_query(F.data.startswith("edit_item_"))
@@ -287,22 +217,13 @@ async def admin_process_new_quantity(message: Message, state: FSMContext, user: 
         return
     
     new_quantity = message.text.strip()
-    
     data = await state.get_data()
-    recipe_id = data['recipe_id']
-    item_id = data['item_id']
     
     try:
-        await update_recipe_item_quantity(item_id, new_quantity, user['id'], recipe_id, db_pool)
-        
-        recipe = await get_recipe_by_id(recipe_id, db_pool)
-        recipe_text = format_recipe_detail(recipe, recipe_id)
-        
-        await message.answer(
-            f"✅ Количество обновлено!\n\n{recipe_text}",
-            reply_markup=get_recipe_actions_keyboard(recipe_id) if recipe['status'] == 'active' else None,
-            parse_mode="HTML"
-        )
+        await update_recipe_item_quantity(data['item_id'], new_quantity, user['id'], data['recipe_id'], db_pool)
+        recipe = await get_recipe_by_id(data['recipe_id'], db_pool)
+        recipe_text = format_recipe_detail(recipe, data['recipe_id'])
+        await message.answer(f"✅ Количество обновлено!\n\n{recipe_text}", reply_markup=get_recipe_actions_keyboard(data['recipe_id']) if recipe['status'] == 'active' else None, parse_mode="HTML")
     except Exception as e:
         await message.answer(f"❌ Ошибка: {str(e)}")
     
@@ -319,10 +240,5 @@ async def admin_back_to_recipe(callback: CallbackQuery, db_pool: Annotated[async
         return
     
     recipe_text = format_recipe_detail(recipe, recipe_id)
-    
-    await callback.message.edit_text(
-        recipe_text,
-        reply_markup=get_recipe_actions_keyboard(recipe_id) if recipe['status'] == 'active' else None,
-        parse_mode="HTML"
-    )
+    await callback.message.edit_text(recipe_text, reply_markup=get_recipe_actions_keyboard(recipe_id) if recipe['status'] == 'active' else None, parse_mode="HTML")
     await callback.answer()

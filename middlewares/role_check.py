@@ -1,7 +1,6 @@
 from typing import List, Callable, Awaitable, Dict, Any
 from aiogram import BaseMiddleware
 from aiogram.types import Message, CallbackQuery
-import asyncpg
 
 
 class RoleCheckMiddleware(BaseMiddleware):
@@ -9,12 +8,7 @@ class RoleCheckMiddleware(BaseMiddleware):
         self.allowed_roles = allowed_roles
         super().__init__()
 
-    async def __call__(
-        self,
-        handler: Callable[[Any, Dict[str, Any]], Awaitable[Any]],
-        event: Any,
-        data: Dict[str, Any]
-    ) -> Any:
+    async def __call__(self, handler: Callable[[Any, Dict[str, Any]], Awaitable[Any]], event: Any, data: Dict[str, Any]) -> Any:
         user = data.get('user')
         
         if not user or user['role'] not in self.allowed_roles:

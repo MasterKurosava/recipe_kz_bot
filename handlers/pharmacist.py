@@ -5,9 +5,8 @@ from aiogram.fsm.state import State, StatesGroup
 from typing import Annotated
 import asyncpg
 from services.recipe_service import get_recipe_by_id, mark_recipe_as_used, update_recipe_item_quantity, get_recipe_logs
-from services.user_service import get_user_by_id
 from keyboards.common import get_recipe_actions_keyboard, get_item_edit_keyboard
-import json
+from utils.recipe_formatter import format_recipe_detail, format_recipe_logs, format_recipe_items
 
 router = Router()
 
@@ -22,11 +21,7 @@ class EditQuantityStates(StatesGroup):
 
 @router.message(F.text == "🔍 Проверить рецепт")
 async def cmd_check_recipe(message: Message, state: FSMContext, user: dict):
-    await message.answer(
-        "🔍 <b>Проверка рецепта</b>\n\n"
-        "📝 Введите ID рецепта:",
-        parse_mode="HTML"
-    )
+    await message.answer("🔍 <b>Проверка рецепта</b>\n\n📝 Введите ID рецепта:", parse_mode="HTML")
     await state.set_state(CheckRecipeStates.waiting_for_recipe_id)
 
 
@@ -39,33 +34,24 @@ async def process_recipe_id(message: Message, state: FSMContext, db_pool: Annota
         return
     
     recipe = await get_recipe_by_id(recipe_id, db_pool)
-    
     if not recipe:
         await message.answer(f"❌ Рецепт с ID <code>{recipe_id}</code> не найден", parse_mode="HTML")
         await state.clear()
         return
     
-    from utils.recipe_formatter import format_recipe_detail, format_recipe_logs
-    
     recipe_text = format_recipe_detail(recipe, recipe_id)
     
     if recipe['status'] == 'active':
-        await message.answer(
-            recipe_text,
-            reply_markup=get_recipe_actions_keyboard(recipe_id),
-            parse_mode="HTML"
-        )
+        await message.answer(recipe_text, reply_markup=get_recipe_actions_keyboard(recipe_id), parse_mode="HTML")
     else:
         logs = await get_recipe_logs(recipe_id, db_pool)
-        recipe_text += format_recipe_logs(logs)
-        await message.answer(recipe_text, parse_mode="HTML")
+        await message.answer(recipe_text + format_recipe_logs(logs), parse_mode="HTML")
     
     await state.clear()
 
 
 @router.callback_query(F.data.startswith("mark_used_"))
 async def mark_used_handler(callback: CallbackQuery, user: dict, db_pool: Annotated[asyncpg.Pool, "db_pool"]):
-    # Проверяем, что пользователь - фармацевт или админ
     if user.get('role') not in ['pharmacist', 'admin']:
         await callback.answer("❌ Доступ запрещён", show_alert=True)
         return
@@ -74,36 +60,27 @@ async def mark_used_handler(callback: CallbackQuery, user: dict, db_pool: Annota
     
     try:
         await mark_recipe_as_used(recipe_id, user['id'], db_pool)
-        await callback.message.edit_text(
-            f"✅ <b>Рецепт #{recipe_id} отмечен как списанный</b>",
-            reply_markup=None,
-            parse_mode="HTML"
-        )
+        await callback.message.edit_text(f"✅ <b>Рецепт #{recipe_id} отмечен как списанный</b>", reply_markup=None, parse_mode="HTML")
     except Exception as e:
-        await callback.message.edit_text(
-            f"❌ Ошибка: {str(e)}",
-            reply_markup=None
-        )
+        await callback.message.edit_text(f"❌ Ошибка: {str(e)}", reply_markup=None)
     
     await callback.answer()
 
 
 @router.callback_query(F.data.startswith("edit_quantity_"))
 async def edit_quantity_select(callback: CallbackQuery, state: FSMContext, db_pool: Annotated[asyncpg.Pool, "db_pool"], user: dict):
-    # Проверяем, что пользователь - фармацевт или админ
     if user.get('role') not in ['pharmacist', 'admin']:
         await callback.answer("❌ Доступ запрещён", show_alert=True)
         return
     
     recipe_id = int(callback.data.split("_")[-1])
-    
     recipe = await get_recipe_by_id(recipe_id, db_pool)
+    
     if not recipe:
         await callback.answer("Рецепт не найден", show_alert=True)
         return
     
     await state.update_data(recipe_id=recipe_id)
-    
     await callback.message.edit_text(
         "✏️ <b>Выберите препарат для изменения количества:</b>",
         reply_markup=get_item_edit_keyboard(recipe_id, recipe['items']),
@@ -114,7 +91,6 @@ async def edit_quantity_select(callback: CallbackQuery, state: FSMContext, db_po
 
 @router.callback_query(F.data.startswith("edit_item_"))
 async def edit_item_start(callback: CallbackQuery, state: FSMContext, user: dict):
-    # Проверяем, что пользователь - фармацевт или админ
     if user.get('role') not in ['pharmacist', 'admin']:
         await callback.answer("❌ Доступ запрещён", show_alert=True)
         return
@@ -136,21 +112,15 @@ async def process_new_quantity(message: Message, state: FSMContext, user: dict, 
         return
     
     new_quantity = message.text.strip()
-    
     data = await state.get_data()
-    recipe_id = data['recipe_id']
-    item_id = data['item_id']
     
     try:
-        await update_recipe_item_quantity(item_id, new_quantity, user['id'], recipe_id, db_pool)
-        
-        recipe = await get_recipe_by_id(recipe_id, db_pool)
-        from utils.recipe_formatter import format_recipe_items
+        await update_recipe_item_quantity(data['item_id'], new_quantity, user['id'], data['recipe_id'], db_pool)
+        recipe = await get_recipe_by_id(data['recipe_id'], db_pool)
         items_text = format_recipe_items(recipe['items'])
         
         await message.answer(
-            f"✅ <b>Количество обновлено!</b>\n\n"
-            f"💊 <b>Текущие препараты:</b>\n{items_text}",
+            f"✅ <b>Количество обновлено!</b>\n\n💊 <b>Текущие препараты:</b>\n{items_text}",
             parse_mode="HTML"
         )
     except Exception as e:
@@ -168,9 +138,7 @@ async def back_to_recipe(callback: CallbackQuery, db_pool: Annotated[asyncpg.Poo
         await callback.answer("Рецепт не найден", show_alert=True)
         return
     
-    from utils.recipe_formatter import format_recipe_detail
     recipe_text = format_recipe_detail(recipe, recipe_id)
-    
     await callback.message.edit_text(
         recipe_text,
         reply_markup=get_recipe_actions_keyboard(recipe_id) if recipe['status'] == 'active' else None,

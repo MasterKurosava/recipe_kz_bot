@@ -9,12 +9,7 @@ import asyncpg
 
 
 class UnregisteredUserMiddleware(BaseMiddleware):
-    async def __call__(
-        self,
-        handler: Callable[[Any, Dict[str, Any]], Awaitable[Any]],
-        event: Any,
-        data: Dict[str, Any]
-    ) -> Any:
+    async def __call__(self, handler: Callable[[Any, Dict[str, Any]], Awaitable[Any]], event: Any, data: Dict[str, Any]) -> Any:
         pool: asyncpg.Pool = data.get("db_pool")
         user_id = extract_user_id(event)
         
@@ -24,39 +19,18 @@ class UnregisteredUserMiddleware(BaseMiddleware):
         user = await get_user_by_telegram_id(user_id, pool)
         
         if not user:
+            admins = await get_users_by_role('admin', pool)
+            admin_text = format_admin_contacts(admins)
+            user_full_name, user_username, _ = extract_user_info(event)
+            
             if isinstance(event, Message):
-                admins = await get_users_by_role('admin', pool)
-                admin_text = format_admin_contacts(admins)
-                
-                user_full_name, user_username, _ = extract_user_info(event)
-                
-                await event.answer(
-                    get_access_denied_message(admin_text),
-                    parse_mode="HTML"
-                )
-                
-                await event.answer(
-                    get_user_id_message(user_full_name, user_username, user_id),
-                    parse_mode="HTML"
-                )
-                return
+                await event.answer(get_access_denied_message(admin_text), parse_mode="HTML")
+                await event.answer(get_user_id_message(user_full_name, user_username, user_id), parse_mode="HTML")
             elif isinstance(event, CallbackQuery):
-                admins = await get_users_by_role('admin', pool)
-                admin_text = format_admin_contacts(admins)
-                
-                user_full_name, user_username, _ = extract_user_info(event)
-                
-                await event.message.answer(
-                    get_access_denied_message(admin_text),
-                    parse_mode="HTML"
-                )
-                
-                await event.message.answer(
-                    get_user_id_message(user_full_name, user_username, user_id),
-                    parse_mode="HTML"
-                )
+                await event.message.answer(get_access_denied_message(admin_text), parse_mode="HTML")
+                await event.message.answer(get_user_id_message(user_full_name, user_username, user_id), parse_mode="HTML")
                 await event.answer()
-                return
+            return
         
         data['user'] = user
         return await handler(event, data)
